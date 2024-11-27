@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# IDE specific files
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build and test artifacts
+coverage.out
+*.test
+*.prof
+*.pprof
+*.trace
+*.log
+
+# Project specific
+tmp/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Documentation
+*.md
+LICENSE
+docs/

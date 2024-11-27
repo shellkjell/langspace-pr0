@@ -1,0 +1,80 @@
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+/dist/
+
+# Go workspace file
+go.work
+
+# Test binary, built with 'go test -c'
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Debug files
+debug
+*.debug
+debug.test
+
+# Operating System
+## Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+## Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Project specific
+*.log
+/tmp/
+.env
+.env.local
+*.pprof
+*.cpu
+*.mem
+
+# Binary output directory
+/bin/
+
+# Generated files
+*.gen.go
+*_string.go
+mock_*.go

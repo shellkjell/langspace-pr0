@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install dependencies
+      run: |
+        go mod download
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+    - name: Run tests
+      run: make test
+
+    - name: Run linter
+      run: make lint
+
+    - name: Generate coverage
+      run: make coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Build
+      run: make build
+
+    - name: Build Docker image
+      run: docker build -t langspace .
+
+  release:
+    name: Release
+    needs: [test, build]
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Build release artifacts
+      run: |
+        GOOS=linux GOARCH=amd64 make build
+        mv langspace langspace-linux-amd64
+        GOOS=darwin GOARCH=amd64 make build
+        mv langspace langspace-darwin-amd64
+        GOOS=windows GOARCH=amd64 make build
+        mv langspace langspace-windows-amd64.exe
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          langspace-linux-amd64
+          langspace-darwin-amd64
+          langspace-windows-amd64.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
