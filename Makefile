@@ -50,6 +50,9 @@ security:
 mocks:
 	mockgen -source=entity/entity.go -destination=entity/mock_entity.go -package=entity
 
+build-main:
+	$(GOBUILD) -o $(BINARY_NAME) cmd/langspace/main.go
+
 # Cross compilation
 build-all:
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME)-linux-amd64

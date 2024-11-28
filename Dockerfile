@@ -1,14 +1,17 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
 
 # Set working directory
-WORKDIR /app
+WORKDIR /build/langspace
 
-# Copy go mod and sum files
-COPY go.mod go.sum ./
+# Copy go mod
+COPY go.mod ./
+
+# Copy go sum
+# COPY go.sum ./
 
 # Download dependencies
 RUN go mod download
@@ -17,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN make build
+RUN make build-main
 
 # Final stage
 FROM alpine:latest
@@ -25,10 +28,10 @@ FROM alpine:latest
 # Install runtime dependencies
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+WORKDIR /app/
 
 # Copy the binary from builder
-COPY --from=builder /app/langspace .
+COPY --from=builder /build/langspace/langspace .
 
 # Command to run
 ENTRYPOINT ["./langspace"]

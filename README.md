@@ -1,7 +1,7 @@
 # LangSpace
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/shellkjell/langspace)](https://goreportcard.com/report/github.com/shellkjell/langspace)
-[![GoDoc](https://godoc.org/github.com/shellkjell/langspace?status.svg)](https://godoc.org/github.com/shellkjell/langspace)
+[![Go Report Card](https://goreportcard.com/badge/github.com/shellkjell/langspace-pr0)](https://goreportcard.com/report/github.com/shellkjell/langspace-pr0)
+[![GoDoc](https://godoc.org/github.com/shellkjell/langspace-pr0?status.svg)](https://godoc.org/github.com/shellkjell/langspace-pr0)
 [![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE.md)
 
 LangSpace is a high-performance, extensible domain-specific language (DSL) designed for managing virtual workspaces. It provides a type-safe, memory-efficient way to declare and manipulate workspace entities with comprehensive error reporting.
@@ -31,7 +31,7 @@ LangSpace is a high-performance, extensible domain-specific language (DSL) desig
 ## Quick Start
 
 ```go
-import "github.com/username/langspace"
+import "github.com/shellkjell/langspace"
 
 // Create a new workspace
 workspace := langspace.NewWorkspace()
@@ -59,7 +59,7 @@ for _, entity := range entities {
 ## Installation
 
 ```bash
-go get github.com/username/langspace
+go get github.com/shellkjell/langspace
 ```
 
 ## Language Syntax
@@ -114,7 +114,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 ### Development Requirements
 
-- Go 1.21 or higher
+- Go 1.23 or higher
 - Make (for build automation)
 - golangci-lint (for code quality)
 
