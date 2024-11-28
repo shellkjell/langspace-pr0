@@ -26,6 +26,38 @@ func New() *Workspace {
 	}
 }
 
+// WorkspaceStats contains statistics about the workspace
+type WorkspaceStats struct {
+	TotalEntities int
+	FileEntities  int
+	AgentEntities int
+	HasValidator  bool
+}
+
+// Stat returns statistics about the workspace
+func (w *Workspace) Stat() WorkspaceStats {
+
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	stats := WorkspaceStats{
+		TotalEntities: len(w.entities),
+		HasValidator:  w.validator != nil,
+	}
+
+	// Count entities by type
+	for _, entity := range w.entities {
+		switch entity.Type() {
+		case "file":
+			stats.FileEntities++
+		case "agent":
+			stats.AgentEntities++
+		}
+	}
+
+	return stats
+}
+
 // WithValidator sets a validator for the workspace
 func (w *Workspace) WithValidator(v Validator) *Workspace {
 	w.validator = v

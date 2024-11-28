@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -19,13 +19,14 @@ func main() {
 	var err error
 
 	if *inputFile != "" {
-		data, err := ioutil.ReadFile(*inputFile)
+		data, err := os.ReadFile(*inputFile)
 		if err != nil {
 			log.Fatalf("Error reading file: %v", err)
 		}
 		input = string(data)
 	} else {
-		data, err := ioutil.ReadAll(os.Stdin)
+		reader := bufio.NewReader(os.Stdin)
+		data, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatalf("Error reading from stdin: %v", err)
 		}
@@ -49,5 +50,11 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Successfully processed %d entities\n", len(entities))
+	data := ws.Stat()
+	fmt.Println("Workspace statistics:")
+	fmt.Println("  Number of entities: ", data.TotalEntities)
+	fmt.Println("  Number of file entities: ", data.FileEntities)
+	fmt.Println("  Number of agent entities: ", data.AgentEntities)
+
+	fmt.Println("Successfully processed amount of entities: ", len(entities))
 }
