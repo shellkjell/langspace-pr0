@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -172,4 +174,74 @@ func BenchmarkWorkspace_GetEntities(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.GetEntities()
 	}
+}
+
+// mockValidator is a test implementation of the Validator interface
+type mockValidator struct {
+	shouldError bool
+	errorMsg    string
+}
+
+func (m *mockValidator) ValidateEntity(entity ast.Entity) error {
+	if m.shouldError {
+		return fmt.Errorf(m.errorMsg)
+	}
+	return nil
+}
+
+func TestWorkspace_WithValidator(t *testing.T) {
+	tests := []struct {
+		name        string
+		validator   *mockValidator
+		entity      ast.Entity
+		wantError   bool
+		errorPrefix string
+	}{
+		{
+			name: "valid entity with validator",
+			validator: &mockValidator{
+				shouldError: false,
+			},
+			entity:    createTestFileEntity(t),
+			wantError: false,
+		},
+		{
+			name: "invalid entity with validator",
+			validator: &mockValidator{
+				shouldError: true,
+				errorMsg:   "test validation error",
+			},
+			entity:      createTestFileEntity(t),
+			wantError:   true,
+			errorPrefix: "validation failed: test validation error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := New().WithValidator(tt.validator)
+			err := w.AddEntity(tt.entity)
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("AddEntity() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+
+			if tt.wantError && err != nil && tt.errorPrefix != "" {
+				if !strings.HasPrefix(err.Error(), tt.errorPrefix) {
+					t.Errorf("AddEntity() error = %v, want prefix %v", err, tt.errorPrefix)
+				}
+			}
+		})
+	}
+}
+
+func createTestFileEntity(t *testing.T) ast.Entity {
+	entity, err := ast.NewEntity("file")
+	if err != nil {
+		t.Fatalf("Failed to create test entity: %v", err)
+	}
+	entity.AddProperty("test.txt")
+	entity.AddProperty("path")
+	return entity
 }
