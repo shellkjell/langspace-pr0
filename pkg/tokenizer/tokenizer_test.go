@@ -58,6 +58,75 @@ func TestTokenizer_Tokenize(t *testing.T) {
 				{Type: TokenTypeSemicolon, Value: ";", Line: 3, Column: 5},
 			},
 		},
+		{
+			name: "triple_backtick_string",
+			input: "file \"script.sh\" ```\n#!/bin/bash\necho 'Hello World'\nexit 0\n``` contents;",
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "script.sh", Line: 1, Column: 6},
+				{Type: TokenTypeMultilineString, Value: "\n#!/bin/bash\necho 'Hello World'\nexit 0\n", Line: 1, Column: 16},
+				{Type: TokenTypeIdentifier, Value: "contents", Line: 5, Column: 5},
+				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 13},
+			},
+		},
+		{
+			name: "triple_backtick_with_embedded_quotes",
+			input: "file \"code.go\" ```\nfunc main() {\n    fmt.Println(\"Hello `world`\")\n}\n``` contents;",
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "code.go", Line: 1, Column: 6},
+				{Type: TokenTypeMultilineString, Value: "\nfunc main() {\n    fmt.Println(\"Hello `world`\")\n}\n", Line: 1, Column: 14},
+				{Type: TokenTypeIdentifier, Value: "contents", Line: 5, Column: 5},
+				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 13},
+			},
+		},
+		{
+			name:  "empty_input",
+			input: "",
+			expected: []Token{},
+		},
+		{
+			name:  "only_whitespace",
+			input: "   \n\t  \n  ",
+			expected: []Token{},
+		},
+		{
+			name: "unclosed_string",
+			input: `file "unclosed`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+			},
+		},
+		{
+			name: "unclosed_multiline",
+			input: "file \"script.sh\" ```\n#!/bin/bash\necho 'test'",
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "script.sh", Line: 1, Column: 6},
+			},
+		},
+		{
+			name: "complex_multiline_with_spaces",
+			input: "file \"test.txt\" ```\n  indented line\n\tTabbed line\n    Mixed   spaces\n``` path;",
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "test.txt", Line: 1, Column: 6},
+				{Type: TokenTypeMultilineString, Value: "\n  indented line\n\tTabbed line\n    Mixed   spaces\n", Line: 1, Column: 15},
+				{Type: TokenTypeIdentifier, Value: "path", Line: 5, Column: 5},
+				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 9},
+			},
+		},
+		{
+			name: "consecutive_semicolons",
+			input: "file \"test.txt\" path;;",
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "test.txt", Line: 1, Column: 6},
+				{Type: TokenTypeIdentifier, Value: "path", Line: 1, Column: 17},
+				{Type: TokenTypeSemicolon, Value: ";", Line: 1, Column: 21},
+				{Type: TokenTypeSemicolon, Value: ";", Line: 1, Column: 22},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -99,6 +168,7 @@ func TestTokenType_String(t *testing.T) {
 		{TokenTypeIdentifier, "IDENTIFIER"},
 		{TokenTypeString, "STRING"},
 		{TokenTypeSemicolon, "SEMICOLON"},
+		{TokenTypeMultilineString, "MULTILINE_STRING"},
 		{TokenType(999), "UNKNOWN"},
 	}
 
@@ -123,5 +193,57 @@ exit 0";`
 
 	for i := 0; i < b.N; i++ {
 		tokenizer.Tokenize(input)
+	}
+}
+
+func TestTokenPool(t *testing.T) {
+	tokenizer := New()
+	
+	// First tokenization should create new tokens
+	input1 := `file "test1.txt" path;`
+	tokens1 := tokenizer.Tokenize(input1)
+	if len(tokens1) != 4 {
+		t.Errorf("Expected 4 tokens, got %d", len(tokens1))
+	}
+	
+	// Second tokenization should reuse token pool
+	input2 := `file "test2.txt" path;`
+	tokens2 := tokenizer.Tokenize(input2)
+	if len(tokens2) != 4 {
+		t.Errorf("Expected 4 tokens, got %d", len(tokens2))
+	}
+	
+	// Verify tokens are independent despite pool reuse
+	if tokens1[1].Value == tokens2[1].Value {
+		t.Error("Token values should be different despite pool reuse")
+	}
+}
+
+func TestTokenizerEdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  int // expected number of tokens
+	}{
+		{"single_char", "a", 1},
+		{"single_quote", "\"", 0},  // Unclosed quotes are ignored
+		{"single_backtick", "`", 0}, // Single backtick is ignored
+		{"newline_only", "\n", 0},
+		{"unicode_spaces", " ", 0},  // Only testing ASCII space for now
+		{"mixed_whitespace", "\t\n \r\n", 0},
+		{"special_chars", "@#$%", 0},  // Special characters should be ignored
+	}
+
+	tokenizer := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tokenizer.Tokenize(tt.input)
+			if len(got) != tt.want {
+				t.Errorf("Tokenize() got %d tokens, want %d for input %q", len(got), tt.want, tt.input)
+				for i, token := range got {
+					t.Logf("Token[%d] = {Type: %v, Value: %q, Line: %d, Column: %d}", i, token.Type, token.Value, token.Line, token.Column)
+				}
+			}
+		})
 	}
 }

@@ -13,6 +13,7 @@ const (
 	TokenTypeIdentifier TokenType = iota
 	TokenTypeString
 	TokenTypeSemicolon
+	TokenTypeMultilineString
 )
 
 // Token represents a lexical token
@@ -67,6 +68,37 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 				Column: startCol,
 			})
 
+		case i+2 < len(input) && input[i] == '`' && input[i+1] == '`' && input[i+2] == '`':
+			startCol := column
+			startLine := line
+			i += 3 // Skip opening triple backticks
+			start := i
+			
+			// Find closing triple backticks
+			for i < len(input) {
+				if i+2 < len(input) && input[i] == '`' && input[i+1] == '`' && input[i+2] == '`' {
+					break
+				}
+				if input[i] == '\n' {
+					line++
+					column = 1
+				} else {
+					column++
+				}
+				i++
+			}
+			
+			if i+2 < len(input) {
+				tokens = append(tokens, Token{
+					Type:   TokenTypeMultilineString,
+					Value:  input[start:i],
+					Line:   startLine,
+					Column: startCol - 2, // Adjust for the space before backticks
+				})
+				i += 3 // Skip closing triple backticks
+				column += 3
+			}
+
 		case input[i] == '"':
 			startCol := column
 			i++ // Skip opening quote
@@ -118,6 +150,8 @@ func (t TokenType) String() string {
 		return "IDENTIFIER"
 	case TokenTypeString:
 		return "STRING"
+	case TokenTypeMultilineString:
+		return "MULTILINE_STRING"
 	case TokenTypeSemicolon:
 		return "SEMICOLON"
 	default:
