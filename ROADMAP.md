@@ -10,6 +10,10 @@ This document outlines the planned development roadmap for the LangSpace project
 - ✅ Workspace management for entities
 - ✅ Token pooling for memory optimization
 - ✅ Comprehensive test coverage
+- ✅ Basic parser implementation
+- ✅ Simple workspace management
+- ⚠️ Partial error reporting
+- ⚠️ Limited test coverage
 
 ### Recent Improvements
 - ✅ Enhanced parser performance
@@ -18,11 +22,36 @@ This document outlines the planned development roadmap for the LangSpace project
 - ✅ Entity type registry
 - ✅ Memory optimization via token pooling
 
+
+### Known Issues
+- ❌ Go version requirement inconsistency (documentation states 1.23)
+- ❌ Repository naming inconsistency
+- ❌ Missing promised features from PRD
+- ❌ API documentation mismatches
+- ❌ Performance claims need verification
+
+## Immediate Priorities (v0.1.1)
+
+### 1. Documentation and Consistency
+- [ ] Fix Go version requirements in documentation
+- [ ] Align repository naming across all documentation
+- [ ] Update API documentation to match implementation
+- [ ] Verify and update performance claims
+- [ ] Add missing ROADMAP.md references
+
+### 2. Core Implementation Alignment
+- [ ] Implement Task entity type (as promised in PRD)
+- [ ] Move validator interface to validator package
+- [ ] Implement comprehensive error reporting with line/column info
+- [ ] Add proper authentication/authorization mechanisms
+- [ ] Implement proper entity type system
+
 ## Short-term Goals (v0.2.0)
 
 ### 1. Entity System Enhancements
 - [ ] Add support for entity relationships
 - [ ] Implement entity validation hooks
+- [ ] Implement pluggable entity type system
 - [ ] Add entity metadata support
 - [ ] Create entity event system
 - [ ] Support entity versioning
@@ -40,6 +69,20 @@ This document outlines the planned development roadmap for the LangSpace project
 - [ ] Add entity search/query capabilities
 - [ ] Support workspace configuration
 - [ ] Add workspace events
+
+### 4. Architecture Improvements
+- [ ] Reorganize package structure
+- [ ] Implement proper entity/ package
+- [ ] Add clean extension points
+- [ ] Improve error handling system
+- [ ] Add workspace configuration support
+
+### 2. Security and Validation
+- [ ] Implement robust access control
+- [ ] Add comprehensive entity validation
+- [ ] Implement secure entity storage
+- [ ] Add audit logging
+- [ ] Add security documentation
 
 ## Medium-term Goals (v0.3.0)
 
@@ -87,21 +130,17 @@ This document outlines the planned development roadmap for the LangSpace project
 - [ ] Custom storage backends
 - [ ] Advanced query language
 
-## Contributing
-
-We welcome contributions in the following areas:
-1. Core functionality improvements
-2. Performance optimizations
-3. Documentation and examples
-4. Testing and benchmarking
-5. Feature requests and bug reports
-
 ## Release Schedule
 
+- **v0.1.1**: Q1 2024
+  - Focus on documentation fixes
+  - Core implementation alignment
+  - Security fundamentals
+
 - **v0.2.0**: Q2 2024
-  - Focus on entity system enhancements
-  - Parser improvements
-  - Basic workspace features
+  - Entity system enhancements
+  - Security and validation
+  - Architecture improvements
 
 - **v0.3.0**: Q4 2024
   - Advanced features implementation
@@ -112,6 +151,15 @@ We welcome contributions in the following areas:
   - Enterprise features
   - Integration support
   - Production readiness
+
+## Contributing
+
+We welcome contributions in the following areas:
+1. Documentation improvements and consistency fixes
+2. Core functionality alignment with PRD
+3. Security implementations
+4. Testing and benchmarking
+5. Feature requests and bug reports
 
 ## Feedback
 
