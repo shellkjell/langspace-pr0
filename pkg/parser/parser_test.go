@@ -52,6 +52,59 @@ func TestParser_Parse_Basic(t *testing.T) {
 			want:      nil,
 			wantError: false,
 		},
+		{
+			name:      "comment_only",
+			input:     "# This is a comment",
+			want:      nil,
+			wantError: false,
+		},
+		{
+			name: "entity_with_comment",
+			input: `# Define a file
+file "test.txt" path;`,
+			want: []ast.Entity{
+				&ast.FileEntity{
+					Path:     "test.txt",
+					Property: "path",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name:  "entity_with_inline_comment",
+			input: `file "test.txt" path; # This is a file entity`,
+			want: []ast.Entity{
+				&ast.FileEntity{
+					Path:     "test.txt",
+					Property: "path",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "multiple_entities_with_comments",
+			input: `# File declaration
+file "config.json" contents;
+# Agent declaration
+agent "validator" instruction;
+# Task declaration
+task "build" schedule;`,
+			want: []ast.Entity{
+				&ast.FileEntity{
+					Path:     "config.json",
+					Property: "contents",
+				},
+				&ast.AgentEntity{
+					Name:     "validator",
+					Property: "instruction",
+				},
+				&ast.TaskEntity{
+					Name:     "build",
+					Property: "schedule",
+				},
+			},
+			wantError: false,
+		},
 	}
 
 	runParserTests(t, tests)
@@ -107,7 +160,7 @@ func TestParser_Parse_MultilineContent(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name:  "multiline_file_content",
+			name: "multiline_file_content",
 			input: `file "script.sh" contents ` + "```" + `
 #!/bin/bash
 echo 'Hello World'
@@ -122,7 +175,7 @@ exit 0
 			wantError: false,
 		},
 		{
-			name:  "multiline_with_backticks",
+			name: "multiline_with_backticks",
 			input: `file "code.go" contents ` + "```" + `
 func main() {
     fmt.Println("Hello world")
@@ -251,4 +304,156 @@ func BenchmarkParser_Parse(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p.Parse()
 	}
+}
+
+func BenchmarkParser_Parse_Small(b *testing.B) {
+	input := `file "test.txt" path; agent "gpt-4" model; task "build" instruction;`
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := New(input)
+		p.Parse()
+	}
+}
+
+func BenchmarkParser_Parse_Large(b *testing.B) {
+	// Generate 200 entities
+	var sb strings.Builder
+	for i := 0; i < 200; i++ {
+		switch i % 3 {
+		case 0:
+			sb.WriteString(`file "file` + string(rune('0'+i%10)) + `.txt" path; `)
+		case 1:
+			sb.WriteString(`agent "agent` + string(rune('0'+i%10)) + `" instruction; `)
+		case 2:
+			sb.WriteString(`task "task` + string(rune('0'+i%10)) + `" schedule; `)
+		}
+	}
+	input := sb.String()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := New(input)
+		p.Parse()
+	}
+}
+
+func TestParser_ParseWithRecovery(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		wantEntities  int
+		wantErrors    int
+		checkFirstErr string
+	}{
+		{
+			name:          "no_errors",
+			input:         `file "test.txt" path; agent "gpt-4" model;`,
+			wantEntities:  2,
+			wantErrors:    0,
+			checkFirstErr: "",
+		},
+		{
+			name:          "recover_after_missing_property",
+			input:         `file "test.txt"; agent "gpt-4" model;`,
+			wantEntities:  1, // Should recover and parse second entity
+			wantErrors:    1,
+			checkFirstErr: "expected property",
+		},
+		{
+			name:          "recover_after_unknown_entity",
+			input:         `unknown "test" prop; file "test.txt" path;`,
+			wantEntities:  1,
+			wantErrors:    1,
+			checkFirstErr: "unknown entity type",
+		},
+		{
+			name:          "multiple_errors_with_recovery",
+			input:         `unknown "a" x; file "test.txt" path; badtype "b" y; agent "gpt" model;`,
+			wantEntities:  2,
+			wantErrors:    2,
+			checkFirstErr: "unknown entity type",
+		},
+		{
+			name:          "all_errors",
+			input:         `unknown "a" x; badtype "b" y;`,
+			wantEntities:  0,
+			wantErrors:    2,
+			checkFirstErr: "unknown entity type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input).WithErrorRecovery()
+			result := p.ParseWithRecovery()
+
+			if len(result.Entities) != tt.wantEntities {
+				t.Errorf("ParseWithRecovery() got %d entities, want %d", len(result.Entities), tt.wantEntities)
+			}
+			if len(result.Errors) != tt.wantErrors {
+				t.Errorf("ParseWithRecovery() got %d errors, want %d", len(result.Errors), tt.wantErrors)
+			}
+			if tt.checkFirstErr != "" && len(result.Errors) > 0 {
+				if !strings.Contains(result.Errors[0].Message, tt.checkFirstErr) {
+					t.Errorf("First error = %q, want containing %q", result.Errors[0].Message, tt.checkFirstErr)
+				}
+			}
+		})
+	}
+}
+
+func TestParseError(t *testing.T) {
+	err := ParseError{
+		Line:    10,
+		Column:  5,
+		Message: "test error",
+	}
+
+	expected := "at line 10, col 5: test error"
+	if err.Error() != expected {
+		t.Errorf("ParseError.Error() = %q, want %q", err.Error(), expected)
+	}
+}
+
+func TestParseResult_HasErrors(t *testing.T) {
+	t.Run("no_errors", func(t *testing.T) {
+		result := ParseResult{Errors: []ParseError{}}
+		if result.HasErrors() {
+			t.Error("HasErrors() = true, want false")
+		}
+	})
+
+	t.Run("with_errors", func(t *testing.T) {
+		result := ParseResult{Errors: []ParseError{{Message: "test"}}}
+		if !result.HasErrors() {
+			t.Error("HasErrors() = false, want true")
+		}
+	})
+}
+
+func TestParseResult_ErrorString(t *testing.T) {
+	t.Run("no_errors", func(t *testing.T) {
+		result := ParseResult{Errors: []ParseError{}}
+		if result.ErrorString() != "" {
+			t.Errorf("ErrorString() = %q, want empty", result.ErrorString())
+		}
+	})
+
+	t.Run("single_error", func(t *testing.T) {
+		result := ParseResult{Errors: []ParseError{{Line: 1, Column: 1, Message: "error1"}}}
+		expected := "at line 1, col 1: error1"
+		if result.ErrorString() != expected {
+			t.Errorf("ErrorString() = %q, want %q", result.ErrorString(), expected)
+		}
+	})
+
+	t.Run("multiple_errors", func(t *testing.T) {
+		result := ParseResult{Errors: []ParseError{
+			{Line: 1, Column: 1, Message: "error1"},
+			{Line: 2, Column: 5, Message: "error2"},
+		}}
+		expected := "at line 1, col 1: error1; at line 2, col 5: error2"
+		if result.ErrorString() != expected {
+			t.Errorf("ErrorString() = %q, want %q", result.ErrorString(), expected)
+		}
+	})
 }

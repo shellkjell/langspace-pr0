@@ -5,68 +5,69 @@ This document outlines the planned development roadmap for the LangSpace project
 ## Current Status (v0.1.0)
 
 ### Core Features
-- ✅ Basic entity system with File and Agent types
-- ✅ Efficient parser with error reporting
-- ✅ Workspace management for entities
-- ✅ Token pooling for memory optimization
-- ✅ Comprehensive test coverage
-- ✅ Basic parser implementation
-- ✅ Simple workspace management
-- ⚠️ Partial error reporting
-- ⚠️ Limited test coverage
+- [x] Basic entity system with File, Agent, and Task types
+- [x] Efficient parser with error reporting
+- [x] Workspace management for entities
+- [x] Token pooling for memory optimization
+- [x] Comprehensive test coverage
+- [x] Validator interface exported for extensibility
+- [x] Line/column error reporting
 
 ### Recent Improvements
-- ✅ Enhanced parser performance
-- ✅ Improved error messages with line/position info
-- ✅ Multi-line string support
-- ✅ Entity type registry
-- ✅ Memory optimization via token pooling
+- [x] Enhanced parser performance
+- [x] Improved error messages with line/position info
+- [x] Multi-line string support
+- [x] Entity type registry
+- [x] Memory optimization via token pooling
+- [x] Task entity type implementation
+- [x] Flexible agent property validation
+- [x] EntityValidator interface for custom validators
+- [x] Single-line comment support (# comments)
+- [x] Entity relationships (assigned, depends, produces, consumes)
+- [x] Updated performance benchmarks
 
 
 ### Known Issues
-- ❌ Go version requirement inconsistency (documentation states 1.23)
-- ❌ Repository naming inconsistency
-- ❌ Missing promised features from PRD
-- ❌ API documentation mismatches
-- ❌ Performance claims need verification
+- [] Some PRD features still pending (triggers, automation)
+- [x] Performance claims verified with current benchmarks
+- [x] Entity relationships implemented
 
 ## Immediate Priorities (v0.1.1)
 
 ### 1. Documentation and Consistency
-- [ ] Fix Go version requirements in documentation
-- [ ] Align repository naming across all documentation
-- [ ] Update API documentation to match implementation
-- [ ] Verify and update performance claims
-- [ ] Add missing ROADMAP.md references
+- [x] Fix Go version requirements in documentation
+- [x] Update API documentation to match implementation
+- [x] Align repository naming across all documentation
+- [x] Verify and update performance claims
 
 ### 2. Core Implementation Alignment
-- [ ] Implement Task entity type (as promised in PRD)
-- [ ] Move validator interface to validator package
-- [ ] Implement comprehensive error reporting with line/column info
+- [x] Implement Task entity type (as promised in PRD)
+- [x] Move validator interface to validator package
+- [x] Implement comprehensive error reporting with line/column info
 - [ ] Add proper authentication/authorization mechanisms
-- [ ] Implement proper entity type system
+- [x] Implement entity relationships (file-agent-task)
 
 ## Short-term Goals (v0.2.0)
 
 ### 1. Entity System Enhancements
-- [ ] Add support for entity relationships
-- [ ] Implement entity validation hooks
+- [x] Add support for entity relationships
+- [x] Implement entity validation hooks
 - [ ] Implement pluggable entity type system
-- [ ] Add entity metadata support
+- [x] Add entity metadata support
 - [ ] Create entity event system
 - [ ] Support entity versioning
 
 ### 2. Parser Improvements
-- [ ] Add support for comments
+- [x] Add support for comments
 - [ ] Implement syntax highlighting
 - [ ] Add source map support
-- [ ] Improve error recovery
+- [x] Improve error recovery
 - [ ] Support for custom entity types
 
 ### 3. Workspace Features
 - [ ] Add workspace persistence
 - [ ] Implement workspace snapshots
-- [ ] Add entity search/query capabilities
+- [x] Add entity search/query capabilities
 - [ ] Support workspace configuration
 - [ ] Add workspace events
 
@@ -132,22 +133,22 @@ This document outlines the planned development roadmap for the LangSpace project
 
 ## Release Schedule
 
-- **v0.1.1**: Q1 2024
+- **v0.1.1**: Q1 2026
   - Focus on documentation fixes
   - Core implementation alignment
   - Security fundamentals
 
-- **v0.2.0**: Q2 2024
+- **v0.2.0**: Q2 2026
   - Entity system enhancements
   - Security and validation
   - Architecture improvements
 
-- **v0.3.0**: Q4 2024
+- **v0.3.0**: Q4 2026
   - Advanced features implementation
   - Developer tools
   - Performance optimizations
 
-- **v1.0.0**: Q2 2025
+- **v1.0.0**: Q2 2027
   - Enterprise features
   - Integration support
   - Production readiness

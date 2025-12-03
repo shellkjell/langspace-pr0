@@ -10,6 +10,7 @@ The AST package defines the following key components:
 - `BaseEntity`: Common implementation shared across entity types
 - `FileEntity`: Represents file system resources
 - `AgentEntity`: Represents automation tasks
+- `TaskEntity`: Represents task management
 
 ## Usage
 
@@ -31,6 +32,22 @@ err = entity.AddProperty("contents")
 if err != nil {
     log.Fatal(err)
 }
+
+// Add metadata
+entity.SetMetadata("author", "john.doe")
+entity.SetMetadata("version", "1.0")
+
+// Retrieve metadata
+author, ok := entity.GetMetadata("author")
+if ok {
+    fmt.Printf("Author: %s\n", author)
+}
+
+// Get all metadata
+allMeta := entity.AllMetadata()
+for key, value := range allMeta {
+    fmt.Printf("%s: %s\n", key, value)
+}
 ```
 
 ## Entity Types
@@ -38,16 +55,44 @@ if err != nil {
 ### File Entity
 - **Purpose**: Represents file system resources
 - **Properties**:
-  - `path`: File system path (required)
-  - `contents`: File contents as string (required)
+  - `path`: File system path or name (required)
+  - `property`: Property type such as `path` or `contents` (required)
 - **Validation**: Must have exactly two properties
 
 ### Agent Entity
 - **Purpose**: Represents automation tasks
 - **Properties**:
   - `name`: Agent identifier (required)
-  - `instruction`: Task instruction (required)
+  - `property`: Property type such as `instruction`, `model`, or `check(filename)` (required)
 - **Validation**: Must have exactly two properties
+
+### Task Entity
+- **Purpose**: Represents task management and automation
+- **Properties**:
+  - `name`: Task identifier (required)
+  - `property`: Property type such as `instruction`, `schedule`, or `priority` (required)
+- **Validation**: Must have exactly two properties
+
+## Entity Metadata
+
+All entities support key-value metadata for storing additional information:
+
+```go
+// Set metadata
+entity.SetMetadata("key", "value")
+
+// Get metadata (returns value and existence flag)
+value, exists := entity.GetMetadata("key")
+
+// Get all metadata as a map (returns a copy)
+allMetadata := entity.AllMetadata()
+```
+
+**Use cases for metadata:**
+- Tracking entity creation time or author
+- Storing version information
+- Adding custom tags or labels
+- Associating external identifiers
 
 ## Extension
 
@@ -56,7 +101,8 @@ To add new entity types:
 1. Create a new struct implementing the `Entity` interface
 2. Add the new type to `NewEntity` factory function
 3. Implement type-specific validation rules
-4. Update relevant documentation
+4. Include metadata support (metadata map field + interface methods)
+5. Update relevant documentation
 
 ## Best Practices
 
@@ -64,3 +110,5 @@ To add new entity types:
 - Use the `NewEntity` factory function instead of direct struct initialization
 - Handle all error cases when adding properties
 - Consider using composition with `BaseEntity` for new entity types
+- Use metadata for extensible, non-core properties
+- Remember that `AllMetadata()` returns a copy to prevent unintended modifications

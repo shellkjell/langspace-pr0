@@ -4,20 +4,38 @@ This document outlines the performance characteristics of the LangSpace parser a
 
 ## Parser Performance
 
-### Small Input Performance (3 entities)
-- **Time**: ~1.9 microseconds per operation
-- **Memory**: 280 bytes allocated per operation
-- **Allocations**: 12 allocations per operation
+### Current Benchmarks (Apple M1 Pro)
 
-### Large Input Performance (200 entities)
-- **Time**: ~137 microseconds per operation
-- **Memory**: 20.5 KB allocated per operation
-- **Allocations**: 609 allocations per operation
+| Benchmark | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| Small Input (3 entities) | ~594 ns | 1.6 KB | 13 |
+| Large Input (200 entities) | ~27 μs | 103 KB | 222 |
 
 ### Performance Characteristics
-- Linear scaling with input size (~0.7 microseconds per entity)
-- Memory usage scales linearly (~100 bytes per entity)
-- Allocation count scales linearly (~3 allocations per entity)
+- Linear scaling with input size (~134 ns per entity)
+- Memory usage scales linearly (~515 bytes per entity)
+- Allocation count scales linearly (~1 allocation per entity)
+
+## Component Benchmarks
+
+### Token Pool
+| Operation | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| Get/Put | ~23 ns | 24 B | 1 |
+| Get/Put String | ~38 ns | 32 B | 2 |
+| Parallel Access | ~10 ns | 24 B | 1 |
+
+### AST Operations
+| Operation | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| NewEntity | ~17 ns | 32 B | 1 |
+| AddProperty | ~64 ns | 64 B | 2 |
+
+### Workspace Operations
+| Operation | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| AddEntity | ~53 ns | 117 B | 1 |
+| GetEntities | ~21 ns | 16 B | 1 |
 
 ## Optimizations Implemented
 
@@ -56,11 +74,16 @@ This document outlines the performance characteristics of the LangSpace parser a
 ## Benchmarking Methodology
 
 All benchmarks were run using Go's built-in testing framework with the following conditions:
-- CPU: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-- OS: Windows
-- Go Version: latest stable
+- CPU: Apple M1 Pro
+- OS: macOS
+- Go Version: 1.23+
 - Each benchmark runs multiple iterations to ensure statistical significance
 - Memory statistics include both heap allocations and system overhead
+
+To run benchmarks locally:
+```bash
+go test -bench=. -benchmem ./...
+```
 
 ## Performance Guidelines
 

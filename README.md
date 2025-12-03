@@ -31,26 +31,30 @@ LangSpace is a high-performance, extensible domain-specific language (DSL) desig
 ## Quick Start
 
 ```go
-import "github.com/shellkjell/langspace"
+import (
+    "github.com/shellkjell/langspace/pkg/parser"
+    "github.com/shellkjell/langspace/pkg/workspace"
+)
 
 // Create a new workspace
-workspace := langspace.NewWorkspace()
+ws := workspace.New()
 
 // Parse entities
 input := `
-file config.json contents "{\"key\": \"value\"}";
-agent validator instruction "validate(config.json)";
+file "config.json" contents;
+agent "validator" instruction;
+task "build" instruction;
 `
 
-parser := langspace.NewParser(input)
-entities, err := parser.Parse()
+p := parser.New(input)
+entities, err := p.Parse()
 if err != nil {
     log.Fatal(err)
 }
 
 // Add entities to workspace
 for _, entity := range entities {
-    if err := workspace.AddEntity(entity); err != nil {
+    if err := ws.AddEntity(entity); err != nil {
         log.Fatal(err)
     }
 }
@@ -67,16 +71,36 @@ go get github.com/shellkjell/langspace
 LangSpace uses a clean, declarative syntax:
 
 ```langspace
-# File declaration
-file example.txt contents "Hello, World!";
+# File declaration with path property
+file "example.txt" path;
+
+# File declaration with contents property
+file "config.json" contents;
 
 # Agent declaration
-agent validator instruction "validate(example.txt)";
+agent "validator" instruction;
+agent "gpt-4" model;
 
-# Multi-line content
-file script.sh contents "#!/bin/bash
+# Task declaration
+task "build" instruction;
+task "backup" schedule;
+task "urgent" priority;
+
+# Multi-line content using triple backticks
+file "script.sh" contents ```
+#!/bin/bash
 echo 'Starting script'
-./run-tests.sh";
+./run-tests.sh
+```;
+```
+
+### Comments
+
+LangSpace supports single-line comments starting with `#`:
+
+```langspace
+# This is a comment
+file "config.json" contents;  # Inline comment
 ```
 
 ## Performance
@@ -85,8 +109,8 @@ LangSpace is designed for high performance:
 
 | Operation | Time | Memory | Allocations |
 |-----------|------|---------|------------|
-| Small Input (3 entities) | 1.9μs | 280B | 12 |
-| Large Input (200 entities) | 137μs | 20.5KB | 609 |
+| Small Input (3 entities) | ~594 ns | 1.6 KB | 13 |
+| Large Input (200 entities) | ~27 μs | 103 KB | 222 |
 
 See [PERFORMANCE.md](PERFORMANCE.md) for detailed benchmarks and optimization strategies.
 
@@ -96,10 +120,16 @@ LangSpace follows clean architecture principles:
 
 ```
 langspace/
-├── entity/     # Core entity types and interfaces
-├── parser/     # Language parser and token management
-├── workspace/  # Workspace management and operations
-└── validator/  # Entity validation and error reporting
+├── cmd/
+│   └── langspace/  # CLI application
+├── internal/
+│   └── pool/       # Memory-efficient token pooling
+├── pkg/
+│   ├── ast/        # Core entity types and interfaces
+│   ├── parser/     # Language parser
+│   ├── tokenizer/  # Lexical analysis and token management
+│   ├── validator/  # Entity validation and error reporting
+│   └── workspace/  # Workspace management and operations
 ```
 
 ## Project Status

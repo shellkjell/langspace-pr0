@@ -35,7 +35,12 @@ if err != nil {
 ### Agent Entities
 - Must have exactly two properties
 - Name must be non-empty
-- Instruction must be a valid command format
+- Property must be "instruction", "model", or "check(filename)" format
+
+### Task Entities
+- Must have exactly two properties
+- Name must be non-empty
+- Property must be "instruction", "schedule", or "priority"
 
 ## Error Messages
 

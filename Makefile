@@ -48,7 +48,7 @@ security:
 
 # Generate mocks
 mocks:
-	mockgen -source=entity/entity.go -destination=entity/mock_entity.go -package=entity
+	mockgen -source=pkg/ast/entity.go -destination=pkg/ast/mock_entity.go -package=ast
 
 build-main:
 	$(GOBUILD) -o $(BINARY_NAME) cmd/langspace/main.go

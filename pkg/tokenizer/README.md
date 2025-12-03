@@ -31,10 +31,22 @@ for _, token := range tokens {
 
 ## Token Types
 
-- `TokenTypeIdentifier`: Entity types and names
-- `TokenTypeString`: String literals
+- `TokenTypeIdentifier`: Entity types, property names, and keywords
+- `TokenTypeString`: String literals (double-quoted)
+- `TokenTypeMultilineString`: Multi-line content (triple backticks)
 - `TokenTypeSemicolon`: Statement terminators
-- `TokenTypeWhitespace`: Spaces and newlines (filtered)
+- `TokenTypeComment`: Single-line comments (starting with `#`)
+
+Note: Whitespace is automatically skipped during tokenization and is not represented as a token type.
+
+### Comments
+
+Comments start with `#` and continue to the end of the line:
+
+```langspace
+# This is a full-line comment
+file "config.json" contents;  # This is an inline comment
+```
 
 ## Features
 

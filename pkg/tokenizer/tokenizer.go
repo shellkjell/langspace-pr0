@@ -14,6 +14,7 @@ const (
 	TokenTypeString
 	TokenTypeSemicolon
 	TokenTypeMultilineString
+	TokenTypeComment
 )
 
 // Token represents a lexical token
@@ -45,6 +46,22 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 
 	for i < len(input) {
 		switch {
+		case input[i] == '#':
+			// Handle single-line comments
+			startCol := column
+			start := i
+			for i < len(input) && input[i] != '\n' {
+				i++
+				column++
+			}
+			tokens = append(tokens, Token{
+				Type:   TokenTypeComment,
+				Value:  input[start:i],
+				Line:   line,
+				Column: startCol,
+			})
+			// Note: newline will be processed in next iteration
+
 		case unicode.IsSpace(rune(input[i])):
 			if input[i] == '\n' {
 				line++
@@ -73,7 +90,7 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 			startLine := line
 			i += 3 // Skip opening triple backticks
 			start := i
-			
+
 			// Find closing triple backticks
 			for i < len(input) {
 				if i+2 < len(input) && input[i] == '`' && input[i+1] == '`' && input[i+2] == '`' {
@@ -87,7 +104,7 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 				}
 				i++
 			}
-			
+
 			if i+2 < len(input) {
 				tokens = append(tokens, Token{
 					Type:   TokenTypeMultilineString,
@@ -154,6 +171,8 @@ func (t TokenType) String() string {
 		return "MULTILINE_STRING"
 	case TokenTypeSemicolon:
 		return "SEMICOLON"
+	case TokenTypeComment:
+		return "COMMENT"
 	default:
 		return "UNKNOWN"
 	}

@@ -55,6 +55,7 @@ func main() {
 	fmt.Println("  Number of entities: ", data.TotalEntities)
 	fmt.Println("  Number of file entities: ", data.FileEntities)
 	fmt.Println("  Number of agent entities: ", data.AgentEntities)
+	fmt.Println("  Number of task entities: ", data.TaskEntities)
 
 	fmt.Println("Successfully processed amount of entities: ", len(entities))
 }
