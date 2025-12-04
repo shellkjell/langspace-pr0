@@ -4,59 +4,29 @@
 [![GoDoc](https://godoc.org/github.com/shellkjell/langspace-pr0?status.svg)](https://godoc.org/github.com/shellkjell/langspace-pr0)
 [![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE.md)
 
-LangSpace is a high-performance, extensible domain-specific language (DSL) designed for managing virtual workspaces. It provides a type-safe, memory-efficient way to declare and manipulate workspace entities with comprehensive error reporting.
+LangSpace is a declarative language for composing AI agent workflows. It provides a readable, versionable format for defining agents, tools, and multi-step pipelines that can be executed directly or compiled to other targets.
 
-## Key Features
+## Overview
 
-- **🚀 High Performance**
-  - Memory-efficient token pooling
-  - Linear scaling with input size (~0.7μs/entity)
-  - Optimized memory allocation (~100 bytes/entity)
+LangSpace sits between writing raw Python/TypeScript and using no-code builders. It captures the full specification of an AI workflow in a single file that can be version-controlled, shared, and executed.
 
-- **🛡️ Type Safety**
-  - Strongly typed entity system
-  - Comprehensive error reporting with line/column information
-  - Validation at parse time
+```langspace
+agent "code-reviewer" {
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
 
-- **🔌 Extensibility**
-  - Pluggable entity type system
-  - Custom entity validators
-  - Event hooks for entity lifecycle
+  instruction: ```
+    You are a senior code reviewer. Analyze code for security
+    vulnerabilities, performance issues, and best practices.
+  ```
 
-- **📝 Modern Syntax**
-  - Clean, declarative syntax
-  - Multi-line string support
-  - Rich error messages
-
-## Quick Start
-
-```go
-import (
-    "github.com/shellkjell/langspace/pkg/parser"
-    "github.com/shellkjell/langspace/pkg/workspace"
-)
-
-// Create a new workspace
-ws := workspace.New()
-
-// Parse entities
-input := `
-file "config.json" contents;
-agent "validator" instruction;
-task "build" instruction;
-`
-
-p := parser.New(input)
-entities, err := p.Parse()
-if err != nil {
-    log.Fatal(err)
+  tools: [read_file, search_codebase]
 }
 
-// Add entities to workspace
-for _, entity := range entities {
-    if err := ws.AddEntity(entity); err != nil {
-        log.Fatal(err)
-    }
+intent "review-changes" {
+  use: agent("code-reviewer")
+  input: git.diff(base: "main")
+  output: file("review.md")
 }
 ```
 
@@ -68,105 +38,234 @@ go get github.com/shellkjell/langspace
 
 ## Language Syntax
 
-LangSpace uses a clean, declarative syntax:
+LangSpace uses block-based declarations with key-value properties.
+
+### Files
+
+Files represent static data: prompts, configuration, or output destinations.
 
 ```langspace
-# File declaration with path property
-file "example.txt" path;
+# Inline contents
+file "prompt.md" {
+  contents: ```
+    You are a helpful assistant.
+  ```
+}
 
-# File declaration with contents property
-file "config.json" contents;
+# Reference to external file
+file "config.json" {
+  path: "./config/app.json"
+}
+```
 
-# Agent declaration
-agent "validator" instruction;
-agent "gpt-4" model;
+### Agents
 
-# Task declaration
-task "build" instruction;
-task "backup" schedule;
-task "urgent" priority;
+Agents are LLM-powered actors with specific roles and capabilities.
 
-# Multi-line content using triple backticks
-file "script.sh" contents ```
-#!/bin/bash
-echo 'Starting script'
-./run-tests.sh
-```;
+```langspace
+agent "analyst" {
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.5
+
+  instruction: ```
+    Analyze the provided data and generate insights.
+  ```
+
+  tools: [read_file, query_database]
+}
+```
+
+### Tools
+
+Tools extend agent capabilities by connecting to external systems.
+
+```langspace
+tool "search_codebase" {
+  description: "Search for patterns in source code"
+
+  parameters: {
+    query: string required
+    file_pattern: string optional
+  }
+
+  handler: mcp("filesystem-server")
+}
+```
+
+### Intentions
+
+Intentions express what you want to accomplish.
+
+```langspace
+intent "summarize-docs" {
+  use: agent("summarizer")
+  input: file("docs/**/*.md")
+  output: file("summary.md")
+}
+```
+
+### Pipelines
+
+Pipelines chain multiple agents together with data flowing between steps.
+
+```langspace
+pipeline "analyze-and-report" {
+  step "analyze" {
+    use: agent("analyzer")
+    input: $input
+  }
+
+  step "report" {
+    use: agent("reporter")
+    input: step("analyze").output
+  }
+
+  output: step("report").output
+}
+```
+
+### MCP Integration
+
+Connect to Model Context Protocol servers for tool access.
+
+```langspace
+mcp "filesystem" {
+  command: "npx"
+  args: ["-y", "@anthropic/mcp-filesystem", "/workspace"]
+}
+
+agent "file-manager" {
+  tools: [
+    mcp("filesystem").read_file,
+    mcp("filesystem").write_file,
+  ]
+}
+```
+
+### Configuration
+
+Set global defaults for providers and models.
+
+```langspace
+config {
+  default_model: "claude-sonnet-4-20250514"
+
+  providers: {
+    anthropic: {
+      api_key: env("ANTHROPIC_API_KEY")
+    }
+  }
+}
 ```
 
 ### Comments
 
-LangSpace supports single-line comments starting with `#`:
+Single-line comments start with `#`:
 
 ```langspace
 # This is a comment
-file "config.json" contents;  # Inline comment
+agent "example" { }  # Inline comment
 ```
 
-## Performance
+## Usage
 
-LangSpace is designed for high performance:
+### As a Library
 
-| Operation | Time | Memory | Allocations |
-|-----------|------|---------|------------|
-| Small Input (3 entities) | ~594 ns | 1.6 KB | 13 |
-| Large Input (200 entities) | ~27 μs | 103 KB | 222 |
+```go
+import (
+    "github.com/shellkjell/langspace/pkg/parser"
+    "github.com/shellkjell/langspace/pkg/workspace"
+)
 
-See [PERFORMANCE.md](PERFORMANCE.md) for detailed benchmarks and optimization strategies.
+// Parse LangSpace definitions
+input := `
+agent "reviewer" {
+  model: "claude-sonnet-4-20250514"
+  instruction: "Review code for issues"
+}
+`
+
+p := parser.New(input)
+entities, err := p.Parse()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Add to workspace
+ws := workspace.New()
+for _, entity := range entities {
+    ws.AddEntity(entity)
+}
+```
+
+### Command Line (Planned)
+
+```bash
+# Execute a workflow
+langspace run workflow.ls --input ./src
+
+# Compile to Python
+langspace compile --target python workflow.ls -o workflow.py
+```
+
+## Examples
+
+See the [examples/](examples/) directory:
+
+- `01-hello-world.ls` — Basic agent definition
+- `02-files.ls` — File declarations and references
+- `03-agents.ls` — Agent configuration options
+- `04-intentions.ls` — Expressing desired outcomes
+- `05-pipelines.ls` — Multi-step workflows
+- `06-tools-mcp.ls` — Tool definitions and MCP integration
+- `07-config.ls` — Global configuration
+- `08-complete-code-review.ls` — Full code review workflow
 
 ## Architecture
 
-LangSpace follows clean architecture principles:
-
 ```
 langspace/
-├── cmd/
-│   └── langspace/  # CLI application
-├── internal/
-│   └── pool/       # Memory-efficient token pooling
+├── cmd/langspace/     # CLI application
+├── internal/pool/     # Token pooling
 ├── pkg/
-│   ├── ast/        # Core entity types and interfaces
-│   ├── parser/     # Language parser
-│   ├── tokenizer/  # Lexical analysis and token management
-│   ├── validator/  # Entity validation and error reporting
-│   └── workspace/  # Workspace management and operations
+│   ├── ast/           # Entity types and interfaces
+│   ├── parser/        # Language parser
+│   ├── tokenizer/     # Lexical analysis
+│   ├── validator/     # Entity validation
+│   └── workspace/     # Workspace management
 ```
 
 ## Project Status
 
-Current version: v0.1.0
+**Current Phase: Foundation**
 
-See [ROADMAP.md](ROADMAP.md) for planned features and development timeline.
+- [x] Block-based tokenizer
+- [x] Parser for all entity types
+- [x] AST representation
+- [x] Validation framework
+- [ ] LLM integration and execution
+- [ ] Compilation targets
+- [ ] CLI tool
+
+See [ROADMAP.md](ROADMAP.md) for the full development plan and [PRD.md](PRD.md) for the product specification.
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) before submitting PRs.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### Development Requirements
+### Requirements
 
-- Go 1.23 or higher
-- Make (for build automation)
-- golangci-lint (for code quality)
+- Go 1.23+
+- Make (optional, for build automation)
 
 ### Running Tests
 
 ```bash
-# Run all tests
 go test ./...
-
-# Run benchmarks
 go test -bench=. -benchmem ./...
-
-# Run with race detection
 go test -race ./...
 ```
 
 ## License
 
-LangSpace is licensed under the [GNU GPL v2](LICENSE.md).
-
-## Acknowledgments
-
-Special thanks to:
-- The Go team for the excellent standard library
-- Our contributors and users for their valuable feedback
+[GNU GPL v2](LICENSE.md)
