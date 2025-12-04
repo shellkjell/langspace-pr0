@@ -10,7 +10,7 @@ LangSpace is a declarative language for composing AI agent workflows. It provide
 
 LangSpace sits between writing raw Python/TypeScript and using no-code builders. It captures the full specification of an AI workflow in a single file that can be version-controlled, shared, and executed.
 
-```langspace
+````langspace
 agent "code-reviewer" {
   model: "claude-sonnet-4-20250514"
   temperature: 0.3
@@ -28,7 +28,7 @@ intent "review-changes" {
   input: git.diff(base: "main")
   output: file("review.md")
 }
-```
+````
 
 ## Installation
 
@@ -44,7 +44,7 @@ LangSpace uses block-based declarations with key-value properties.
 
 Files represent static data: prompts, configuration, or output destinations.
 
-```langspace
+````langspace
 # Inline contents
 file "prompt.md" {
   contents: ```
@@ -56,13 +56,13 @@ file "prompt.md" {
 file "config.json" {
   path: "./config/app.json"
 }
-```
+````
 
 ### Agents
 
 Agents are LLM-powered actors with specific roles and capabilities.
 
-```langspace
+````langspace
 agent "analyst" {
   model: "claude-sonnet-4-20250514"
   temperature: 0.5
@@ -73,7 +73,7 @@ agent "analyst" {
 
   tools: [read_file, query_database]
 }
-```
+````
 
 ### Tools
 
