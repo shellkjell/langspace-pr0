@@ -249,6 +249,105 @@ func TestMCPEntity(t *testing.T) {
 	}
 }
 
+func TestScriptEntity(t *testing.T) {
+	e := NewScriptEntity("update-record")
+	e.SetProperty("language", StringValue{Value: "python"})
+	e.SetProperty("runtime", StringValue{Value: "python3"})
+	e.SetProperty("code", StringValue{Value: `
+import db
+record = db.find("users", {"id": user_id})
+record["description"] = new_description
+db.save("users", record)
+print(f"Updated user {user_id}")
+`})
+	e.SetProperty("timeout", StringValue{Value: "30s"})
+	e.SetProperty("capabilities", ArrayValue{Elements: []Value{
+		StringValue{Value: "database"},
+		StringValue{Value: "filesystem"},
+	}})
+	e.SetProperty("parameters", ObjectValue{Properties: map[string]Value{
+		"user_id":         StringValue{Value: "string required"},
+		"new_description": StringValue{Value: "string required"},
+	}})
+
+	if e.Type() != "script" {
+		t.Errorf("ScriptEntity.Type() = %q, want %q", e.Type(), "script")
+	}
+	if e.Name() != "update-record" {
+		t.Errorf("ScriptEntity.Name() = %q, want %q", e.Name(), "update-record")
+	}
+
+	lang, ok := e.GetProperty("language")
+	if !ok {
+		t.Error("ScriptEntity.GetProperty(language) should return true")
+	}
+	if sv, ok := lang.(StringValue); !ok || sv.Value != "python" {
+		t.Errorf("ScriptEntity.GetProperty(language) = %v, want python", lang)
+	}
+
+	runtime, ok := e.GetProperty("runtime")
+	if !ok {
+		t.Error("ScriptEntity.GetProperty(runtime) should return true")
+	}
+	if sv, ok := runtime.(StringValue); !ok || sv.Value != "python3" {
+		t.Errorf("ScriptEntity.GetProperty(runtime) = %v, want python3", runtime)
+	}
+
+	caps, ok := e.GetProperty("capabilities")
+	if !ok {
+		t.Error("ScriptEntity.GetProperty(capabilities) should return true")
+	}
+	if av, ok := caps.(ArrayValue); !ok || len(av.Elements) != 2 {
+		t.Errorf("ScriptEntity.GetProperty(capabilities) = %v, want array with 2 elements", caps)
+	}
+}
+
+func TestScriptEntity_WithSandbox(t *testing.T) {
+	e := NewScriptEntity("safe-script")
+	e.SetProperty("language", StringValue{Value: "python"})
+	e.SetProperty("sandbox", ObjectValue{Properties: map[string]Value{
+		"network":    BoolValue{Value: false},
+		"filesystem": StringValue{Value: "readonly"},
+		"allowed_modules": ArrayValue{Elements: []Value{
+			StringValue{Value: "json"},
+			StringValue{Value: "datetime"},
+		}},
+	}})
+	e.SetProperty("limits", ObjectValue{Properties: map[string]Value{
+		"timeout": StringValue{Value: "60s"},
+		"memory":  StringValue{Value: "256MB"},
+		"cpu":     StringValue{Value: "1 core"},
+	}})
+
+	sandbox, ok := e.GetProperty("sandbox")
+	if !ok {
+		t.Error("ScriptEntity.GetProperty(sandbox) should return true")
+	}
+	if ov, ok := sandbox.(ObjectValue); ok {
+		if network, exists := ov.Properties["network"]; exists {
+			if bv, ok := network.(BoolValue); !ok || bv.Value != false {
+				t.Errorf("sandbox.network = %v, want false", network)
+			}
+		} else {
+			t.Error("sandbox should have network property")
+		}
+	} else {
+		t.Errorf("sandbox should be ObjectValue, got %T", sandbox)
+	}
+
+	limits, ok := e.GetProperty("limits")
+	if !ok {
+		t.Error("ScriptEntity.GetProperty(limits) should return true")
+	}
+	if ov, ok := limits.(ObjectValue); ok {
+		if len(ov.Properties) != 3 {
+			t.Errorf("limits should have 3 properties, got %d", len(ov.Properties))
+		}
+	} else {
+		t.Errorf("limits should be ObjectValue, got %T", limits)
+	}
+}
+
 func TestNewEntity(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -321,6 +420,13 @@ func TestNewEntity(t *testing.T) {
 			wantError: false,
 		},
 		{
+			name:      "script entity",
+			entType:   "script",
+			entName:   "update-record",
+			wantType:  "script",
+			wantError: false,
+		},
+		{
 			name:      "unknown entity",
 			entType:   "unknown",
 			entName:   "test",
@@ -357,6 +463,7 @@ func TestEntityPropertyOperations(t *testing.T) {
 		{"trigger", "trigger"},
 		{"config", "config"},
 		{"mcp", "mcp"},
+		{"script", "script"},
 	}
 
 	for _, e := range entities {
@@ -412,7 +519,7 @@ func TestEntityPropertyOperations(t *testing.T) {
 }
 
 func TestEntity_Metadata(t *testing.T) {
-	entityTypes := []string{"file", "agent", "tool", "intent", "pipeline", "step", "trigger", "config", "mcp"}
+	entityTypes := []string{"file", "agent", "tool", "intent", "pipeline", "step", "trigger", "config", "mcp", "script"}
 
 	for _, entType := range entityTypes {
 		t.Run(entType+"_metadata", func(t *testing.T) {

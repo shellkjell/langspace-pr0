@@ -257,6 +257,30 @@ func NewMCPEntity(name string) *MCPEntity {
 	return &MCPEntity{BaseEntity: NewBaseEntity("mcp", name)}
 }
 
+// ScriptEntity represents a script entity in LangSpace.
+// Scripts enable code-first agent actions — a more efficient alternative to
+// multiple tool calls. Instead of loading full data into the context window
+// through repeated tool invocations, agents write executable code that performs
+// complex operations in a single execution, returning only the results.
+//
+// Key properties:
+//   - language: The programming language (python, javascript, bash, sql)
+//   - runtime: The runtime/interpreter to use (python3, node, bash, postgresql)
+//   - code: The script source code (inline or file reference)
+//   - parameters: Input parameters passed to the script
+//   - capabilities: What the script can access (database, filesystem, network)
+//   - timeout: Maximum execution time
+//   - limits: Resource constraints (memory, cpu)
+//   - sandbox: Security restrictions (allowed_modules, network access)
+type ScriptEntity struct {
+	*BaseEntity
+}
+
+// NewScriptEntity creates a new script entity
+func NewScriptEntity(name string) *ScriptEntity {
+	return &ScriptEntity{BaseEntity: NewBaseEntity("script", name)}
+}
+
 // NewEntity creates a new Entity based on the provided type identifier.
 func NewEntity(entityType string, name string) (Entity, error) {
 	switch entityType {
@@ -278,6 +302,8 @@ func NewEntity(entityType string, name string) (Entity, error) {
 		return NewConfigEntity(), nil
 	case "mcp":
 		return NewMCPEntity(name), nil
+	case "script":
+		return NewScriptEntity(name), nil
 	default:
 		return nil, fmt.Errorf("unknown entity type: %s", entityType)
 	}

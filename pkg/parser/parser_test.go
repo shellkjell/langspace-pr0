@@ -476,6 +476,223 @@ func TestParseResult_ErrorString(t *testing.T) {
 	})
 }
 
+// TestParser_Parse_ScriptEntity tests script entity parsing
+func TestParser_Parse_ScriptEntity(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantCount  int
+		checkFirst func(t *testing.T, e ast.Entity)
+		wantError  bool
+	}{
+		{
+			name:      "simple_script",
+			input:     `script "hello" { language: "python" runtime: "python3" }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "script" {
+					t.Errorf("Type() = %q, want script", e.Type())
+				}
+				if e.Name() != "hello" {
+					t.Errorf("Name() = %q, want hello", e.Name())
+				}
+				lang, ok := e.GetProperty("language")
+				if !ok {
+					t.Error("expected language property")
+				}
+				if sv, ok := lang.(ast.StringValue); !ok || sv.Value != "python" {
+					t.Errorf("language = %v, want python", lang)
+				}
+			},
+		},
+		{
+			name: "script_with_code",
+			input: `script "update-record" {
+    language: "python"
+    runtime: "python3"
+    code: ` + "```python\n" + `import db
+record = db.find("users", {"id": user_id})
+record["description"] = new_description
+db.save("users", record)
+` + "```" + `
+}`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "script" {
+					t.Errorf("Type() = %q, want script", e.Type())
+				}
+				code, ok := e.GetProperty("code")
+				if !ok {
+					t.Error("expected code property")
+				}
+				if sv, ok := code.(ast.StringValue); !ok {
+					t.Errorf("code is not StringValue: %T", code)
+				} else {
+					if !strings.Contains(sv.Value, "import db") {
+						t.Errorf("code should contain 'import db', got: %s", sv.Value)
+					}
+				}
+			},
+		},
+		{
+			name: "script_with_capabilities",
+			input: `script "db-script" {
+    language: "python"
+    capabilities: [database, filesystem]
+}`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				caps, ok := e.GetProperty("capabilities")
+				if !ok {
+					t.Error("expected capabilities property")
+				}
+				arr, ok := caps.(ast.ArrayValue)
+				if !ok {
+					t.Errorf("capabilities is not ArrayValue: %T", caps)
+					return
+				}
+				if len(arr.Elements) != 2 {
+					t.Errorf("capabilities has %d elements, want 2", len(arr.Elements))
+				}
+			},
+		},
+		{
+			name: "script_with_parameters",
+			input: `script "parameterized" {
+    language: "python"
+    parameters: {
+        table: "string required"
+        id: "string required"
+    }
+}`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				params, ok := e.GetProperty("parameters")
+				if !ok {
+					t.Error("expected parameters property")
+				}
+				obj, ok := params.(ast.ObjectValue)
+				if !ok {
+					t.Errorf("parameters is not ObjectValue: %T", params)
+					return
+				}
+				if len(obj.Properties) != 2 {
+					t.Errorf("parameters has %d properties, want 2", len(obj.Properties))
+				}
+			},
+		},
+		{
+			name: "script_with_sandbox",
+			input: `script "safe-script" {
+    language: "python"
+    sandbox: {
+        network: false
+        filesystem: "readonly"
+    }
+    limits: {
+        timeout: "60s"
+        memory: "256MB"
+    }
+}`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				sandbox, ok := e.GetProperty("sandbox")
+				if !ok {
+					t.Error("expected sandbox property")
+				}
+				obj, ok := sandbox.(ast.ObjectValue)
+				if !ok {
+					t.Errorf("sandbox is not ObjectValue: %T", sandbox)
+					return
+				}
+				network, exists := obj.Properties["network"]
+				if !exists {
+					t.Error("sandbox should have network property")
+				}
+				if bv, ok := network.(ast.BoolValue); !ok || bv.Value != false {
+					t.Errorf("sandbox.network = %v, want false", network)
+				}
+
+				limits, ok := e.GetProperty("limits")
+				if !ok {
+					t.Error("expected limits property")
+				}
+				limObj, ok := limits.(ast.ObjectValue)
+				if !ok {
+					t.Errorf("limits is not ObjectValue: %T", limits)
+					return
+				}
+				if len(limObj.Properties) != 2 {
+					t.Errorf("limits has %d properties, want 2", len(limObj.Properties))
+				}
+			},
+		},
+		{
+			name:      "script_with_timeout",
+			input:     `script "quick" { language: "bash" timeout: "10s" }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				timeout, ok := e.GetProperty("timeout")
+				if !ok {
+					t.Error("expected timeout property")
+				}
+				if sv, ok := timeout.(ast.StringValue); !ok || sv.Value != "10s" {
+					t.Errorf("timeout = %v, want 10s", timeout)
+				}
+			},
+		},
+		{
+			name: "multiple_scripts",
+			input: `script "s1" { language: "python" }
+script "s2" { language: "bash" }`,
+			wantCount: 2,
+		},
+		{
+			name: "script_with_variable_code",
+			input: `script "dynamic" {
+    language: "python"
+    code: $agent_generated_code
+}`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				code, ok := e.GetProperty("code")
+				if !ok {
+					t.Error("expected code property")
+				}
+				varVal, ok := code.(ast.VariableValue)
+				if !ok {
+					t.Errorf("code is not VariableValue: %T", code)
+					return
+				}
+				if varVal.Name != "agent_generated_code" {
+					t.Errorf("code = $%s, want $agent_generated_code", varVal.Name)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("Parser.Parse() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+
+			if len(got) != tt.wantCount {
+				t.Errorf("Parser.Parse() got %d entities, want %d", len(got), tt.wantCount)
+				return
+			}
+
+			if tt.checkFirst != nil && len(got) > 0 {
+				tt.checkFirst(t, got[0])
+			}
+		})
+	}
+}
+
 func BenchmarkParser_Parse_BlockSyntax(b *testing.B) {
 	input := `agent "reviewer" { model: "gpt-4o" temperature: 0.7 tools: [read_file, write_file] }`
 	b.ResetTimer()

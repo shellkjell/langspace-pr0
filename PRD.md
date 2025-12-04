@@ -23,6 +23,7 @@ The AI agent ecosystem is fragmented:
 | **No-code builders** | Easy but not versionable, shareable, or composable |
 | **Raw API calls** | Maximum control but massive boilerplate |
 | **Prompt templates** | Don't capture the full workflow, just the prompt |
+| **MCP/Tool-heavy patterns** | Context window bloat from round-trip data transfer |
 
 Developers need to:
 1. Share agent configurations with teammates
@@ -30,6 +31,36 @@ Developers need to:
 3. Compose simple agents into complex pipelines
 4. Test and iterate on agent behavior without rewriting code
 5. Generate code/configs for their preferred runtime
+6. **Minimize context window usage for cost-effective, efficient agent execution**
+
+### The Context Window Problem
+
+Modern AI agents often interact with external systems through tools (MCP, function calling, etc.). Each tool call requires:
+- Sending the full tool schema to the model
+- Receiving structured input from the model
+- Executing the tool and returning results
+- Loading those results into the context window
+
+For multi-step operations, this creates massive context bloat. Consider updating a database record:
+
+```
+Tool-heavy approach:
+1. Call find_record tool → Load entire record into context (1KB+)
+2. Model processes record → Context grows
+3. Call update_record tool → Send modified record back
+4. Result loaded into context → More bloat
+Total: 4+ context round-trips, full data duplication
+```
+
+```
+Script-first approach:
+1. Agent writes a script that finds, modifies, and saves
+2. Script executes outside the model context
+3. Only the result ("Updated successfully") returns
+Total: 1 context exchange, minimal data
+```
+
+LangSpace's script-first philosophy addresses this by letting agents write and execute code rather than making multiple tool calls.
 
 ### The Solution
 
@@ -170,6 +201,147 @@ trigger "daily-summary" {
   run: intent("generate-standup") {
     input: git.commits(since: "yesterday")
   }
+}
+```
+
+### 7. Scripts — Code-First Agent Actions
+
+Scripts enable a fundamentally more efficient way for agents to interact with external systems. Instead of making multiple tool calls (each consuming context window space), agents write executable code that performs complex multi-step operations in a single execution.
+
+**The Problem with Tool-Heavy Approaches:**
+
+Traditional MCP/tool-based interactions suffer from context window bloat:
+1. Agent requests a database record → full record loaded into context
+2. Agent decides to modify one field → entire context grows
+3. Agent saves record → more context consumed
+4. Each round-trip adds to the context window burden
+
+**The Script Solution:**
+
+```langspace
+script "update-record" {
+  language: "python"
+  runtime: "python3"
+
+  # Define what the script needs access to
+  capabilities: [database, filesystem]
+
+  # Scripts can be written inline or referenced
+  code: ```python
+    import db
+
+    # Find, modify, and save in one execution
+    record = db.find("users", {"id": user_id})
+    record["description"] = new_description
+    db.save("users", record)
+
+    # Return only what matters
+    print(f"Updated user {user_id}")
+  ```
+
+  # Input parameters passed to the script
+  parameters: {
+    user_id: string required
+    new_description: string required
+  }
+
+  # Timeout and resource limits
+  timeout: "30s"
+  max_memory: "256MB"
+}
+```
+
+**Why Scripts are More Efficient:**
+
+| Approach | Context Usage | Round Trips |
+|----------|---------------|-------------|
+| Tool calls | High (full data in/out) | Multiple |
+| Scripts | Low (only results) | Single |
+
+**Script Features:**
+
+```langspace
+# Template script for agents to customize
+script "db-operation" {
+  language: "python"
+  runtime: "python3"
+  capabilities: [database]
+
+  # Agents can provide the code dynamically
+  code: $agent_generated_code
+
+  # Sandbox configuration
+  sandbox: {
+    network: false          # No network access
+    filesystem: "readonly"  # Read-only fs access
+    allowed_modules: ["db", "json", "datetime"]
+  }
+}
+
+# Script that an agent can use directly
+agent "data-manager" {
+  model: "claude-sonnet-4-20250514"
+
+  instruction: ```
+    You manage database records efficiently. Instead of using
+    individual tool calls, write Python scripts to perform
+    multi-step operations in a single execution.
+  ```
+
+  # The agent can generate and execute scripts
+  scripts: [
+    script("db-operation"),
+    script("file-batch")
+  ]
+}
+
+# Intent using script execution
+intent "batch-update" {
+  use: agent("data-manager")
+
+  # Agent will write a script to handle this efficiently
+  input: file("updates.json")
+
+  # Execute the agent's generated script
+  execute: script("db-operation") {
+    code: $agent.output
+  }
+}
+```
+
+**Supported Languages:**
+
+Scripts can be written in any language with a compatible runtime:
+- Python (recommended for data operations)
+- JavaScript/TypeScript
+- Shell/Bash
+- SQL (for database-specific operations)
+- Custom DSLs
+
+**Security Model:**
+
+Scripts run in sandboxed environments with explicit capability grants:
+
+```langspace
+script "safe-operation" {
+  language: "python"
+
+  # Explicit capability declarations
+  capabilities: [
+    database.read,      # Can read from database
+    database.write,     # Can write to database
+    filesystem.read,    # Can read files
+    # filesystem.write  # NOT granted - can't write files
+  ]
+
+  # Resource limits
+  limits: {
+    timeout: "60s"
+    memory: "512MB"
+    cpu: "1 core"
+  }
+
+  code: file("scripts/operation.py")
 }
 ```
 

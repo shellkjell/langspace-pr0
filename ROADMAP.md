@@ -25,6 +25,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Single-line comment support (# comments)
 - [x] Entity relationships (assigned, depends, produces, consumes)
 - [x] Updated performance benchmarks
+- [x] Script entity type for code-first agent actions (context-efficient)
 
 
 ### Known Issues
@@ -57,28 +58,35 @@ This document outlines the planned development roadmap for the LangSpace project
 - [ ] Create entity event system
 - [ ] Support entity versioning
 
-### 2. Parser Improvements
+### 2. Script Execution Runtime
+- [ ] Implement sandboxed Python script execution
+- [ ] Add JavaScript/Node.js runtime support
+- [ ] Implement capability-based security model
+- [ ] Add resource limits (timeout, memory, CPU)
+- [ ] Support agent-generated code execution
+
+### 3. Parser Improvements
 - [x] Add support for comments
 - [ ] Implement syntax highlighting
 - [ ] Add source map support
 - [x] Improve error recovery
 - [ ] Support for custom entity types
 
-### 3. Workspace Features
+### 4. Workspace Features
 - [ ] Add workspace persistence
 - [ ] Implement workspace snapshots
 - [x] Add entity search/query capabilities
 - [ ] Support workspace configuration
 - [ ] Add workspace events
 
-### 4. Architecture Improvements
+### 5. Architecture Improvements
 - [ ] Reorganize package structure
 - [ ] Implement proper entity/ package
 - [ ] Add clean extension points
 - [ ] Improve error handling system
 - [ ] Add workspace configuration support
 
-### 2. Security and Validation
+### 6. Security and Validation
 - [ ] Implement robust access control
 - [ ] Add comprehensive entity validation
 - [ ] Implement secure entity storage

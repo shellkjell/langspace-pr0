@@ -142,6 +142,61 @@ agent "file-manager" {
 }
 ```
 
+### Scripts
+
+Scripts enable code-first agent actions — a more efficient alternative to multiple tool calls. Instead of loading full data into the context window through repeated tool invocations, agents write executable code that performs complex operations in a single execution.
+
+```langspace
+# Define a reusable script template
+script "db-update" {
+  language: "python"
+  runtime: "python3"
+
+  capabilities: [database]
+
+  parameters: {
+    table: string required
+    id: string required
+    updates: object required
+  }
+
+  code: ```python
+    import db
+
+    # Find, modify, and save in one execution
+    record = db.find(table, {"id": id})
+    record.update(updates)
+    db.save(table, record)
+
+    print(f"Updated {table}/{id}")
+  ```
+
+  timeout: "30s"
+}
+
+# Agent that generates and executes scripts
+agent "efficient-data-manager" {
+  model: "claude-sonnet-4-20250514"
+
+  instruction: ```
+    Perform database operations by writing Python scripts
+    rather than making individual tool calls. This is more
+    efficient and keeps the context window small.
+  ```
+
+  scripts: [script("db-update")]
+}
+```
+
+**Why Scripts over Tools?**
+
+| Approach | Context Usage | Round Trips |
+|----------|---------------|-------------|
+| Multiple tool calls | High (full data loaded each time) | Many |
+| Single script execution | Low (only results returned) | One |
+
+See [examples/09-scripts.ls](examples/09-scripts.ls) for more patterns.
+
 ### Configuration
 
 Set global defaults for providers and models.
@@ -220,6 +275,7 @@ See the [examples/](examples/) directory:
 - `06-tools-mcp.ls` — Tool definitions and MCP integration
 - `07-config.ls` — Global configuration
 - `08-complete-code-review.ls` — Full code review workflow
+- `09-scripts.ls` — Code-first agent actions (context-efficient)
 
 ## Architecture
 
