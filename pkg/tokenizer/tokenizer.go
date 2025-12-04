@@ -15,6 +15,21 @@ const (
 	TokenTypeSemicolon
 	TokenTypeMultilineString
 	TokenTypeComment
+	// New token types for block syntax
+	TokenTypeLeftBrace    // {
+	TokenTypeRightBrace   // }
+	TokenTypeLeftBracket  // [
+	TokenTypeRightBracket // ]
+	TokenTypeLeftParen    // (
+	TokenTypeRightParen   // )
+	TokenTypeColon        // :
+	TokenTypeComma        // ,
+	TokenTypeDot          // .
+	TokenTypeEquals       // =
+	TokenTypeArrow        // =>
+	TokenTypeDollar       // $
+	TokenTypeNumber       // numeric literals
+	TokenTypeBoolean      // true/false
 )
 
 // Token represents a lexical token
@@ -71,24 +86,174 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 			}
 			i++
 
-		case unicode.IsLetter(rune(input[i])):
+		case input[i] == '{':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeLeftBrace,
+				Value:  "{",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '}':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeRightBrace,
+				Value:  "}",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '[':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeLeftBracket,
+				Value:  "[",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == ']':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeRightBracket,
+				Value:  "]",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '(':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeLeftParen,
+				Value:  "(",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == ')':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeRightParen,
+				Value:  ")",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == ':':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeColon,
+				Value:  ":",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == ',':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeComma,
+				Value:  ",",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '.':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeDot,
+				Value:  ".",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '$':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeDollar,
+				Value:  "$",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '=' && i+1 < len(input) && input[i+1] == '>':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeArrow,
+				Value:  "=>",
+				Line:   line,
+				Column: column,
+			})
+			i += 2
+			column += 2
+
+		case input[i] == '=':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeEquals,
+				Value:  "=",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case unicode.IsDigit(rune(input[i])) || (input[i] == '-' && i+1 < len(input) && unicode.IsDigit(rune(input[i+1]))):
 			start := i
 			startCol := column
-			for i < len(input) && (unicode.IsLetter(rune(input[i])) || unicode.IsDigit(rune(input[i])) || input[i] == '_' || input[i] == '.') {
+			if input[i] == '-' {
+				i++
+				column++
+			}
+			for i < len(input) && (unicode.IsDigit(rune(input[i])) || input[i] == '.') {
 				i++
 				column++
 			}
 			tokens = append(tokens, Token{
-				Type:   TokenTypeIdentifier,
+				Type:   TokenTypeNumber,
 				Value:  input[start:i],
 				Line:   line,
 				Column: startCol,
 			})
 
+		case unicode.IsLetter(rune(input[i])) || input[i] == '_':
+			start := i
+			startCol := column
+			for i < len(input) && (unicode.IsLetter(rune(input[i])) || unicode.IsDigit(rune(input[i])) || input[i] == '_' || input[i] == '-') {
+				i++
+				column++
+			}
+			value := input[start:i]
+			// Check for boolean literals
+			if value == "true" || value == "false" {
+				tokens = append(tokens, Token{
+					Type:   TokenTypeBoolean,
+					Value:  value,
+					Line:   line,
+					Column: startCol,
+				})
+			} else {
+				tokens = append(tokens, Token{
+					Type:   TokenTypeIdentifier,
+					Value:  value,
+					Line:   line,
+					Column: startCol,
+				})
+			}
+
 		case i+2 < len(input) && input[i] == '`' && input[i+1] == '`' && input[i+2] == '`':
 			startCol := column
 			startLine := line
 			i += 3 // Skip opening triple backticks
+			column += 3
 			start := i
 
 			// Find closing triple backticks
@@ -110,7 +275,7 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 					Type:   TokenTypeMultilineString,
 					Value:  input[start:i],
 					Line:   startLine,
-					Column: startCol - 2, // Adjust for the space before backticks
+					Column: startCol,
 				})
 				i += 3 // Skip closing triple backticks
 				column += 3
@@ -122,6 +287,12 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 			column++
 			start := i
 			for i < len(input) && input[i] != '"' {
+				if input[i] == '\\' && i+1 < len(input) {
+					// Skip escaped character
+					i += 2
+					column += 2
+					continue
+				}
 				if input[i] == '\n' {
 					line++
 					column = 1
@@ -173,6 +344,34 @@ func (t TokenType) String() string {
 		return "SEMICOLON"
 	case TokenTypeComment:
 		return "COMMENT"
+	case TokenTypeLeftBrace:
+		return "LEFT_BRACE"
+	case TokenTypeRightBrace:
+		return "RIGHT_BRACE"
+	case TokenTypeLeftBracket:
+		return "LEFT_BRACKET"
+	case TokenTypeRightBracket:
+		return "RIGHT_BRACKET"
+	case TokenTypeLeftParen:
+		return "LEFT_PAREN"
+	case TokenTypeRightParen:
+		return "RIGHT_PAREN"
+	case TokenTypeColon:
+		return "COLON"
+	case TokenTypeComma:
+		return "COMMA"
+	case TokenTypeDot:
+		return "DOT"
+	case TokenTypeEquals:
+		return "EQUALS"
+	case TokenTypeArrow:
+		return "ARROW"
+	case TokenTypeDollar:
+		return "DOLLAR"
+	case TokenTypeNumber:
+		return "NUMBER"
+	case TokenTypeBoolean:
+		return "BOOLEAN"
 	default:
 		return "UNKNOWN"
 	}

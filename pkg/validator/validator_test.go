@@ -7,6 +7,61 @@ import (
 	"github.com/shellkjell/langspace/pkg/ast"
 )
 
+// Helper functions to create test entities - use typed constructors for simplicity
+func createFileEntity(name string) ast.Entity {
+	entity := ast.NewFileEntity(name)
+	// File entity needs path or contents
+	entity.SetProperty("path", ast.StringValue{Value: "/tmp/test"})
+	return entity
+}
+
+func createAgentEntity(name string) ast.Entity {
+	entity := ast.NewAgentEntity(name)
+	entity.SetProperty("model", ast.StringValue{Value: "gpt-4"})
+	entity.SetProperty("instruction", ast.StringValue{Value: "You are an assistant"})
+	return entity
+}
+
+func createToolEntity(name string) ast.Entity {
+	entity := ast.NewToolEntity(name)
+	entity.SetProperty("command", ast.StringValue{Value: "echo hello"})
+	return entity
+}
+
+func createIntentEntity(name string) ast.Entity {
+	entity := ast.NewIntentEntity(name)
+	entity.SetProperty("use", ast.ReferenceValue{Type: "agent", Name: "test_agent"})
+	return entity
+}
+
+func createPipelineEntity(name string) ast.Entity {
+	return ast.NewPipelineEntity(name)
+}
+
+func createTriggerEntity(name string) ast.Entity {
+	entity := ast.NewTriggerEntity(name)
+	entity.SetProperty("event", ast.StringValue{Value: "on_start"})
+	return entity
+}
+
+func createConfigEntity() ast.Entity {
+	entity := ast.NewConfigEntity()
+	entity.SetProperty("default_model", ast.StringValue{Value: "gpt-4"})
+	return entity
+}
+
+func createMCPEntity(name string) ast.Entity {
+	entity := ast.NewMCPEntity(name)
+	entity.SetProperty("command", ast.StringValue{Value: "node server.js"})
+	return entity
+}
+
+func createStepEntity(name string) ast.Entity {
+	entity := ast.NewStepEntity(name)
+	entity.SetProperty("use", ast.ReferenceValue{Type: "agent", Name: "test"})
+	return entity
+}
+
 func TestValidator_ValidateEntity(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -21,138 +76,171 @@ func TestValidator_ValidateEntity(t *testing.T) {
 			errorMsg:  "entity cannot be nil",
 		},
 		{
-			name: "valid file entity with path",
-			entity: &testEntity{
-				entityType: "file",
-				props:      []string{"test.txt", "path"},
-			},
+			name:      "valid file entity",
+			entity:    createFileEntity("test.txt"),
 			wantError: false,
 		},
 		{
-			name: "valid file entity with contents",
-			entity: &testEntity{
-				entityType: "file",
-				props:      []string{"test.txt", "contents"},
-			},
-			wantError: false,
-		},
-		{
-			name: "file entity with invalid property",
-			entity: &testEntity{
-				entityType: "file",
-				props:      []string{"test.txt", "invalid"},
-			},
+			name:      "file entity with empty name",
+			entity:    createFileEntity(""),
 			wantError: true,
-			errorMsg:  "invalid file property: invalid",
+			errorMsg:  "file entity must have a name",
 		},
 		{
-			name: "file entity with empty path",
-			entity: &testEntity{
-				entityType: "file",
-				props:      []string{"", "path"},
-			},
+			name: "file entity without path or contents",
+			entity: func() ast.Entity {
+				return ast.NewFileEntity("test.txt")
+			}(),
 			wantError: true,
-			errorMsg:  "file path cannot be empty",
+			errorMsg:  "file entity must have either 'path' or 'contents' property",
 		},
 		{
-			name: "file entity with too many properties",
-			entity: &testEntity{
-				entityType: "file",
-				props:      []string{"test.txt", "path", "extra"},
-			},
-			wantError: true,
-			errorMsg:  "file entity must have exactly 2 properties",
-		},
-		{
-			name: "valid agent entity with instruction",
-			entity: &testEntity{
-				entityType: "agent",
-				props:      []string{"validator", "instruction"},
-			},
+			name:      "valid agent entity",
+			entity:    createAgentEntity("assistant"),
 			wantError: false,
 		},
 		{
-			name: "valid agent entity with model",
-			entity: &testEntity{
-				entityType: "agent",
-				props:      []string{"gpt-4", "model"},
-			},
-			wantError: false,
-		},
-		{
-			name: "valid agent entity with check",
-			entity: &testEntity{
-				entityType: "agent",
-				props:      []string{"validator", "check(test.txt)"},
-			},
-			wantError: false,
-		},
-		{
-			name: "agent entity with empty name",
-			entity: &testEntity{
-				entityType: "agent",
-				props:      []string{"", "instruction"},
-			},
+			name:      "agent entity with empty name",
+			entity:    createAgentEntity(""),
 			wantError: true,
-			errorMsg:  "agent name cannot be empty",
+			errorMsg:  "agent entity must have a name",
 		},
 		{
-			name: "agent entity with invalid property",
-			entity: &testEntity{
-				entityType: "agent",
-				props:      []string{"validator", "invalid"},
-			},
+			name: "agent entity without model",
+			entity: func() ast.Entity {
+				e := ast.NewAgentEntity("test")
+				e.SetProperty("instruction", ast.StringValue{Value: "test"})
+				return e
+			}(),
 			wantError: true,
-			errorMsg:  "invalid agent property",
+			errorMsg:  "agent entity must have 'model' property",
 		},
 		{
-			name: "valid task entity with instruction",
-			entity: &testEntity{
-				entityType: "task",
-				props:      []string{"build", "instruction"},
-			},
+			name:      "valid tool entity",
+			entity:    createToolEntity("calculator"),
 			wantError: false,
 		},
 		{
-			name: "valid task entity with schedule",
-			entity: &testEntity{
-				entityType: "task",
-				props:      []string{"backup", "schedule"},
-			},
+			name:      "tool entity with empty name",
+			entity:    createToolEntity(""),
+			wantError: true,
+			errorMsg:  "tool entity must have a name",
+		},
+		{
+			name: "tool entity without command or function",
+			entity: func() ast.Entity {
+				return ast.NewToolEntity("test")
+			}(),
+			wantError: true,
+			errorMsg:  "tool entity must have either 'command' or 'function' property",
+		},
+		{
+			name:      "valid intent entity",
+			entity:    createIntentEntity("analyze"),
 			wantError: false,
 		},
 		{
-			name: "valid task entity with priority",
-			entity: &testEntity{
-				entityType: "task",
-				props:      []string{"urgent", "priority"},
-			},
+			name:      "intent entity with empty name",
+			entity:    createIntentEntity(""),
+			wantError: true,
+			errorMsg:  "intent entity must have a name",
+		},
+		{
+			name: "intent entity without use",
+			entity: func() ast.Entity {
+				return ast.NewIntentEntity("test")
+			}(),
+			wantError: true,
+			errorMsg:  "intent entity must have 'use' property",
+		},
+		{
+			name:      "valid pipeline entity",
+			entity:    createPipelineEntity("build"),
 			wantError: false,
 		},
 		{
-			name: "task entity with empty name",
-			entity: &testEntity{
-				entityType: "task",
-				props:      []string{"", "instruction"},
-			},
+			name:      "pipeline entity with empty name",
+			entity:    createPipelineEntity(""),
 			wantError: true,
-			errorMsg:  "task name cannot be empty",
+			errorMsg:  "pipeline entity must have a name",
 		},
 		{
-			name: "task entity with invalid property",
-			entity: &testEntity{
-				entityType: "task",
-				props:      []string{"build", "invalid"},
-			},
+			name:      "valid trigger entity",
+			entity:    createTriggerEntity("startup"),
+			wantError: false,
+		},
+		{
+			name:      "trigger entity with empty name",
+			entity:    createTriggerEntity(""),
 			wantError: true,
-			errorMsg:  "invalid task property",
+			errorMsg:  "trigger entity must have a name",
+		},
+		{
+			name: "trigger entity without event or schedule",
+			entity: func() ast.Entity {
+				return ast.NewTriggerEntity("test")
+			}(),
+			wantError: true,
+			errorMsg:  "trigger entity must have 'event' or 'schedule' property",
+		},
+		{
+			name:      "valid config entity",
+			entity:    createConfigEntity(),
+			wantError: false,
+		},
+		{
+			name: "config entity without properties",
+			entity: func() ast.Entity {
+				return ast.NewConfigEntity()
+			}(),
+			wantError: true,
+			errorMsg:  "config entity must have at least one property",
+		},
+		{
+			name:      "valid mcp entity",
+			entity:    createMCPEntity("server"),
+			wantError: false,
+		},
+		{
+			name:      "mcp entity with empty name",
+			entity:    createMCPEntity(""),
+			wantError: true,
+			errorMsg:  "mcp entity must have a name",
+		},
+		{
+			name: "mcp entity without command",
+			entity: func() ast.Entity {
+				return ast.NewMCPEntity("test")
+			}(),
+			wantError: true,
+			errorMsg:  "mcp entity must have 'command' property",
+		},
+		{
+			name:      "valid step entity",
+			entity:    createStepEntity("process"),
+			wantError: false,
+		},
+		{
+			name: "step entity with empty name",
+			entity: func() ast.Entity {
+				return ast.NewStepEntity("")
+			}(),
+			wantError: true,
+			errorMsg:  "step entity must have a name",
+		},
+		{
+			name: "step entity without use",
+			entity: func() ast.Entity {
+				return ast.NewStepEntity("test")
+			}(),
+			wantError: true,
+			errorMsg:  "step entity must have 'use' property",
 		},
 		{
 			name: "unknown entity type",
-			entity: &testEntity{
-				entityType: "unknown",
-				props:      []string{"test", "prop"},
-			},
+			entity: func() ast.Entity {
+				return &unknownEntity{name: "test"}
+			}(),
 			wantError: true,
 			errorMsg:  "unknown entity type: unknown",
 		},
@@ -173,27 +261,46 @@ func TestValidator_ValidateEntity(t *testing.T) {
 	}
 }
 
-// testEntity is a mock implementation of ast.Entity for testing
-type testEntity struct {
-	entityType string
-	props      []string
+// unknownEntity is a mock implementation for testing unknown entity types
+type unknownEntity struct {
+	name       string
+	properties map[string]ast.Value
 	metadata   map[string]string
+	line       int
+	column     int
 }
 
-func (e *testEntity) Type() string {
-	return e.entityType
+func (e *unknownEntity) Type() string {
+	return "unknown"
 }
 
-func (e *testEntity) Properties() []string {
-	return e.props
+func (e *unknownEntity) Name() string {
+	return e.name
 }
 
-func (e *testEntity) AddProperty(prop string) error {
-	e.props = append(e.props, prop)
-	return nil
+func (e *unknownEntity) Properties() map[string]ast.Value {
+	if e.properties == nil {
+		return make(map[string]ast.Value)
+	}
+	return e.properties
 }
 
-func (e *testEntity) GetMetadata(key string) (string, bool) {
+func (e *unknownEntity) SetProperty(key string, val ast.Value) {
+	if e.properties == nil {
+		e.properties = make(map[string]ast.Value)
+	}
+	e.properties[key] = val
+}
+
+func (e *unknownEntity) GetProperty(key string) (ast.Value, bool) {
+	if e.properties == nil {
+		return nil, false
+	}
+	val, ok := e.properties[key]
+	return val, ok
+}
+
+func (e *unknownEntity) GetMetadata(key string) (string, bool) {
 	if e.metadata == nil {
 		return "", false
 	}
@@ -201,17 +308,30 @@ func (e *testEntity) GetMetadata(key string) (string, bool) {
 	return val, ok
 }
 
-func (e *testEntity) SetMetadata(key, value string) {
+func (e *unknownEntity) SetMetadata(key, value string) {
 	if e.metadata == nil {
 		e.metadata = make(map[string]string)
 	}
 	e.metadata[key] = value
 }
 
-func (e *testEntity) AllMetadata() map[string]string {
+func (e *unknownEntity) AllMetadata() map[string]string {
 	result := make(map[string]string)
 	for k, v := range e.metadata {
 		result[k] = v
 	}
 	return result
+}
+
+func (e *unknownEntity) Line() int {
+	return e.line
+}
+
+func (e *unknownEntity) Column() int {
+	return e.column
+}
+
+func (e *unknownEntity) SetLocation(line, column int) {
+	e.line = line
+	e.column = column
 }

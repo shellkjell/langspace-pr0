@@ -10,6 +10,25 @@ import (
 	"github.com/shellkjell/langspace/pkg/validator"
 )
 
+func createFileEntity(name string) ast.Entity {
+	entity, _ := ast.NewEntity("file", name)
+	entity.SetProperty("path", ast.StringValue{Value: "/path/to/" + name})
+	return entity
+}
+
+func createAgentEntity(name string) ast.Entity {
+	entity, _ := ast.NewEntity("agent", name)
+	entity.SetProperty("model", ast.StringValue{Value: "gpt-4o"})
+	entity.SetProperty("instruction", ast.StringValue{Value: "You are a helpful assistant."})
+	return entity
+}
+
+func createToolEntity(name string) ast.Entity {
+	entity, _ := ast.NewEntity("tool", name)
+	entity.SetProperty("command", ast.StringValue{Value: "echo hello"})
+	return entity
+}
+
 func TestWorkspace_AddEntity(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -35,37 +54,23 @@ func TestWorkspace_AddEntity(t *testing.T) {
 
 	// Test adding valid entities
 	w := New()
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
 
-	if err := w.AddEntity(fileEntity); err != nil {
+	if err := w.AddEntity(createFileEntity("test.txt")); err != nil {
 		t.Errorf("Workspace.AddEntity() error = %v for valid file entity", err)
 	}
 
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-
-	if err := w.AddEntity(agentEntity); err != nil {
+	if err := w.AddEntity(createAgentEntity("validator")); err != nil {
 		t.Errorf("Workspace.AddEntity() error = %v for valid agent entity", err)
 	}
 
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-
-	if err := w.AddEntity(taskEntity); err != nil {
-		t.Errorf("Workspace.AddEntity() error = %v for valid task entity", err)
+	if err := w.AddEntity(createToolEntity("linter")); err != nil {
+		t.Errorf("Workspace.AddEntity() error = %v for valid tool entity", err)
 	}
 }
 
 func TestWorkspace_GetEntities(t *testing.T) {
 	w := New()
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
+	w.AddEntity(createFileEntity("test.txt"))
 
 	entities := w.GetEntities()
 	if len(entities) != 1 {
@@ -79,24 +84,9 @@ func TestWorkspace_GetEntities(t *testing.T) {
 
 func TestWorkspace_GetEntitiesByType(t *testing.T) {
 	w := New()
-
-	// Add a file entity
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	// Add an agent entity
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
-
-	// Add a task entity
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-	w.AddEntity(taskEntity)
+	w.AddEntity(createFileEntity("test.txt"))
+	w.AddEntity(createAgentEntity("validator"))
+	w.AddEntity(createToolEntity("linter"))
 
 	// Test getting file entities
 	fileEntities := w.GetEntitiesByType("file")
@@ -110,10 +100,10 @@ func TestWorkspace_GetEntitiesByType(t *testing.T) {
 		t.Errorf("Workspace.GetEntitiesByType(agent) returned %d entities, want 1", len(agentEntities))
 	}
 
-	// Test getting task entities
-	taskEntities := w.GetEntitiesByType("task")
-	if len(taskEntities) != 1 {
-		t.Errorf("Workspace.GetEntitiesByType(task) returned %d entities, want 1", len(taskEntities))
+	// Test getting tool entities
+	toolEntities := w.GetEntitiesByType("tool")
+	if len(toolEntities) != 1 {
+		t.Errorf("Workspace.GetEntitiesByType(tool) returned %d entities, want 1", len(toolEntities))
 	}
 
 	// Test getting non-existent type
@@ -123,24 +113,32 @@ func TestWorkspace_GetEntitiesByType(t *testing.T) {
 	}
 }
 
+func TestWorkspace_GetEntityByName(t *testing.T) {
+	w := New()
+	w.AddEntity(createFileEntity("test.txt"))
+	w.AddEntity(createAgentEntity("validator"))
+
+	// Test finding existing entity
+	entity, found := w.GetEntityByName("file", "test.txt")
+	if !found {
+		t.Error("GetEntityByName() should find existing entity")
+	}
+	if entity.Name() != "test.txt" {
+		t.Errorf("GetEntityByName() returned entity with name %q, want test.txt", entity.Name())
+	}
+
+	// Test finding non-existent entity
+	_, found = w.GetEntityByName("file", "nonexistent.txt")
+	if found {
+		t.Error("GetEntityByName() should not find non-existent entity")
+	}
+}
+
 func TestWorkspace_Clear(t *testing.T) {
 	w := New()
-
-	// Add some entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
-
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-	w.AddEntity(taskEntity)
+	w.AddEntity(createFileEntity("test.txt"))
+	w.AddEntity(createAgentEntity("validator"))
+	w.AddEntity(createToolEntity("linter"))
 
 	// Clear the workspace
 	w.Clear()
@@ -160,13 +158,10 @@ func TestWorkspace_Concurrency(t *testing.T) {
 	// Test concurrent adding of entities
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
-		go func() {
+		go func(i int) {
 			defer wg.Done()
-			fileEntity, _ := ast.NewEntity("file")
-			fileEntity.AddProperty("test.txt")
-			fileEntity.AddProperty("contents")
-			w.AddEntity(fileEntity)
-		}()
+			w.AddEntity(createFileEntity(fmt.Sprintf("test%d.txt", i)))
+		}(i)
 	}
 	wg.Wait()
 
@@ -179,22 +174,17 @@ func TestWorkspace_Concurrency(t *testing.T) {
 
 func BenchmarkWorkspace_AddEntity(b *testing.B) {
 	w := New()
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
+	entity := createFileEntity("test.txt")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		w.AddEntity(fileEntity)
+		w.AddEntity(entity)
 	}
 }
 
 func BenchmarkWorkspace_GetEntities(b *testing.B) {
 	w := New()
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
+	w.AddEntity(createFileEntity("test.txt"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -228,7 +218,7 @@ func TestWorkspace_WithValidator(t *testing.T) {
 			validator: &mockValidator{
 				shouldError: false,
 			},
-			entity:    createTestFileEntity(t),
+			entity:    createFileEntity("test.txt"),
 			wantError: false,
 		},
 		{
@@ -237,7 +227,7 @@ func TestWorkspace_WithValidator(t *testing.T) {
 				shouldError: true,
 				errorMsg:    "test validation error",
 			},
-			entity:      createTestFileEntity(t),
+			entity:      createFileEntity("test.txt"),
 			wantError:   true,
 			errorPrefix: "validation failed: test validation error",
 		},
@@ -262,41 +252,22 @@ func TestWorkspace_WithValidator(t *testing.T) {
 	}
 }
 
-func createTestFileEntity(t *testing.T) ast.Entity {
-	entity, err := ast.NewEntity("file")
-	if err != nil {
-		t.Fatalf("Failed to create test entity: %v", err)
-	}
-	entity.AddProperty("test.txt")
-	entity.AddProperty("path")
-	return entity
-}
-
 func TestWorkspace_WithRealValidator(t *testing.T) {
 	w := New().WithValidator(validator.New())
 
 	// Test valid file entity
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("test.txt")
-	fileEntity.AddProperty("contents")
-	if err := w.AddEntity(fileEntity); err != nil {
+	if err := w.AddEntity(createFileEntity("test.txt")); err != nil {
 		t.Errorf("AddEntity() with valid file should not error, got: %v", err)
 	}
 
 	// Test valid agent entity
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	if err := w.AddEntity(agentEntity); err != nil {
+	if err := w.AddEntity(createAgentEntity("validator")); err != nil {
 		t.Errorf("AddEntity() with valid agent should not error, got: %v", err)
 	}
 
-	// Test valid task entity
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-	if err := w.AddEntity(taskEntity); err != nil {
-		t.Errorf("AddEntity() with valid task should not error, got: %v", err)
+	// Test valid tool entity
+	if err := w.AddEntity(createToolEntity("linter")); err != nil {
+		t.Errorf("AddEntity() with valid tool should not error, got: %v", err)
 	}
 
 	// Verify stats
@@ -310,8 +281,8 @@ func TestWorkspace_WithRealValidator(t *testing.T) {
 	if stats.AgentEntities != 1 {
 		t.Errorf("Expected 1 agent entity, got %d", stats.AgentEntities)
 	}
-	if stats.TaskEntities != 1 {
-		t.Errorf("Expected 1 task entity, got %d", stats.TaskEntities)
+	if stats.ToolEntities != 1 {
+		t.Errorf("Expected 1 tool entity, got %d", stats.ToolEntities)
 	}
 }
 
@@ -319,20 +290,9 @@ func TestWorkspace_Relationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
-
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-	w.AddEntity(taskEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
+	w.AddEntity(createToolEntity("linter"))
 
 	// Test adding a valid relationship
 	err := w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -358,8 +318,8 @@ func TestWorkspace_Relationships(t *testing.T) {
 	}
 
 	// Add more relationships
-	w.AddRelationship("task", "build", "file", "config.json", RelationTypeConsumes)
-	w.AddRelationship("agent", "validator", "task", "build", RelationTypeAssigned)
+	w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
+	w.AddRelationship("agent", "validator", "tool", "linter", RelationTypeAssigned)
 
 	// Verify stats
 	stats := w.Stat()
@@ -372,15 +332,8 @@ func TestWorkspace_GetRelationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
 	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -403,24 +356,13 @@ func TestWorkspace_GetRelationshipsForEntity(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
-
-	taskEntity, _ := ast.NewEntity("task")
-	taskEntity.AddProperty("build")
-	taskEntity.AddProperty("instruction")
-	w.AddEntity(taskEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
+	w.AddEntity(createToolEntity("linter"))
 
 	// Add relationships
 	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
-	w.AddRelationship("task", "build", "file", "config.json", RelationTypeConsumes)
+	w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
 
 	// Get relationships for file entity (should have 2)
 	fileRels := w.GetRelationshipsForEntity("file", "config.json")
@@ -439,15 +381,8 @@ func TestWorkspace_GetRelatedEntities(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
 	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -475,15 +410,8 @@ func TestWorkspace_RemoveRelationship(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
 	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -515,15 +443,8 @@ func TestWorkspace_Clear_WithRelationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	fileEntity, _ := ast.NewEntity("file")
-	fileEntity.AddProperty("config.json")
-	fileEntity.AddProperty("contents")
-	w.AddEntity(fileEntity)
-
-	agentEntity, _ := ast.NewEntity("agent")
-	agentEntity.AddProperty("validator")
-	agentEntity.AddProperty("instruction")
-	w.AddEntity(agentEntity)
+	w.AddEntity(createFileEntity("config.json"))
+	w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
 	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -550,11 +471,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 			return nil
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-
-		err := w.AddEntity(fileEntity)
+		err := w.AddEntity(createFileEntity("test.txt"))
 		if err != nil {
 			t.Errorf("AddEntity() error = %v", err)
 		}
@@ -570,11 +487,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 			return fmt.Errorf("blocked by hook")
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-
-		err := w.AddEntity(fileEntity)
+		err := w.AddEntity(createFileEntity("test.txt"))
 		if err == nil {
 			t.Error("AddEntity() should have failed due to hook")
 		}
@@ -597,11 +510,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 			return nil
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-
-		err := w.AddEntity(fileEntity)
+		err := w.AddEntity(createFileEntity("test.txt"))
 		if err != nil {
 			t.Errorf("AddEntity() error = %v", err)
 		}
@@ -627,11 +536,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 			return nil
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-
-		w.AddEntity(fileEntity)
+		w.AddEntity(createFileEntity("test.txt"))
 
 		expected := []string{"before1", "before2", "after1"}
 		if len(callOrder) != len(expected) {
@@ -648,11 +553,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 func TestWorkspace_RemoveEntity(t *testing.T) {
 	t.Run("remove_existing_entity", func(t *testing.T) {
 		w := New()
-
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-		w.AddEntity(fileEntity)
+		w.AddEntity(createFileEntity("test.txt"))
 
 		err := w.RemoveEntity("file", "test.txt")
 		if err != nil {
@@ -676,15 +577,8 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 		w := New()
 
 		// Add entities
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("config.json")
-		fileEntity.AddProperty("contents")
-		w.AddEntity(fileEntity)
-
-		agentEntity, _ := ast.NewEntity("agent")
-		agentEntity.AddProperty("validator")
-		agentEntity.AddProperty("instruction")
-		w.AddEntity(agentEntity)
+		w.AddEntity(createFileEntity("config.json"))
+		w.AddEntity(createAgentEntity("validator"))
 
 		// Add relationship
 		w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -717,11 +611,7 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 			return nil
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-		w.AddEntity(fileEntity)
-
+		w.AddEntity(createFileEntity("test.txt"))
 		w.RemoveEntity("file", "test.txt")
 
 		if !beforeCalled {
@@ -739,10 +629,7 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 			return fmt.Errorf("removal blocked")
 		})
 
-		fileEntity, _ := ast.NewEntity("file")
-		fileEntity.AddProperty("test.txt")
-		fileEntity.AddProperty("contents")
-		w.AddEntity(fileEntity)
+		w.AddEntity(createFileEntity("test.txt"))
 
 		err := w.RemoveEntity("file", "test.txt")
 		if err == nil {

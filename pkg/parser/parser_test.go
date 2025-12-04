@@ -7,255 +7,203 @@ import (
 	"github.com/shellkjell/langspace/pkg/ast"
 )
 
-func TestParser_Parse_Basic(t *testing.T) {
+// TestParser_Parse_BlockSyntax tests the new block-based syntax
+func TestParser_Parse_BlockSyntax(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		want      []ast.Entity
-		wantError bool
+		name       string
+		input      string
+		wantCount  int
+		checkFirst func(t *testing.T, e ast.Entity)
+		wantError  bool
 	}{
 		{
-			name:  "single_file_entity",
-			input: `file "test.txt" path;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "test.txt",
-					Property: "path",
-				},
+			name:      "simple_agent",
+			input:     `agent "reviewer" { model: "gpt-4o" }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "agent" {
+					t.Errorf("Type() = %q, want agent", e.Type())
+				}
+				if e.Name() != "reviewer" {
+					t.Errorf("Name() = %q, want reviewer", e.Name())
+				}
+				model, ok := e.GetProperty("model")
+				if !ok {
+					t.Error("expected model property")
+				}
+				if sv, ok := model.(ast.StringValue); !ok || sv.Value != "gpt-4o" {
+					t.Errorf("model = %v, want gpt-4o", model)
+				}
 			},
-			wantError: false,
 		},
 		{
-			name:  "multiple_entities",
-			input: `file "test.txt" path; agent "gpt-4" model;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "test.txt",
-					Property: "path",
-				},
-				&ast.AgentEntity{
-					Name:     "gpt-4",
-					Property: "model",
-				},
+			name:      "agent_with_number",
+			input:     `agent "test" { model: "gpt-4" temperature: 0.7 }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				temp, ok := e.GetProperty("temperature")
+				if !ok {
+					t.Error("expected temperature property")
+				}
+				if nv, ok := temp.(ast.NumberValue); !ok || nv.Value != 0.7 {
+					t.Errorf("temperature = %v, want 0.7", temp)
+				}
 			},
-			wantError: false,
+		},
+		{
+			name:      "agent_with_array",
+			input:     `agent "coder" { tools: [read_file, write_file, search] }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				tools, ok := e.GetProperty("tools")
+				if !ok {
+					t.Error("expected tools property")
+				}
+				arr, ok := tools.(ast.ArrayValue)
+				if !ok {
+					t.Errorf("tools is not ArrayValue: %T", tools)
+					return
+				}
+				if len(arr.Elements) != 3 {
+					t.Errorf("tools has %d elements, want 3", len(arr.Elements))
+				}
+			},
+		},
+		{
+			name:      "agent_with_boolean",
+			input:     `agent "assistant" { streaming: true verbose: false }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				streaming, ok := e.GetProperty("streaming")
+				if !ok {
+					t.Error("expected streaming property")
+				}
+				if bv, ok := streaming.(ast.BoolValue); !ok || !bv.Value {
+					t.Errorf("streaming = %v, want true", streaming)
+				}
+
+				verbose, ok := e.GetProperty("verbose")
+				if !ok {
+					t.Error("expected verbose property")
+				}
+				if bv, ok := verbose.(ast.BoolValue); !ok || bv.Value {
+					t.Errorf("verbose = %v, want false", verbose)
+				}
+			},
+		},
+		{
+			name:      "file_entity",
+			input:     `file "config.json" { path: "/etc/config.json" }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "file" {
+					t.Errorf("Type() = %q, want file", e.Type())
+				}
+				if e.Name() != "config.json" {
+					t.Errorf("Name() = %q, want config.json", e.Name())
+				}
+			},
+		},
+		{
+			name:      "intent_with_reference",
+			input:     `intent "review" { use: agent("reviewer") input: $code }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "intent" {
+					t.Errorf("Type() = %q, want intent", e.Type())
+				}
+
+				use, ok := e.GetProperty("use")
+				if !ok {
+					t.Error("expected use property")
+				}
+				ref, ok := use.(ast.ReferenceValue)
+				if !ok {
+					t.Errorf("use is not ReferenceValue: %T", use)
+					return
+				}
+				if ref.Type != "agent" || ref.Name != "reviewer" {
+					t.Errorf("use = %v, want agent(reviewer)", ref)
+				}
+
+				input, ok := e.GetProperty("input")
+				if !ok {
+					t.Error("expected input property")
+				}
+				varVal, ok := input.(ast.VariableValue)
+				if !ok {
+					t.Errorf("input is not VariableValue: %T", input)
+					return
+				}
+				if varVal.Name != "code" {
+					t.Errorf("input = $%s, want $code", varVal.Name)
+				}
+			},
+		},
+		{
+			name:      "step_with_dot_access",
+			input:     `step "report" { input: step("analyze").output }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				input, ok := e.GetProperty("input")
+				if !ok {
+					t.Error("expected input property")
+				}
+				ref, ok := input.(ast.ReferenceValue)
+				if !ok {
+					t.Errorf("input is not ReferenceValue: %T", input)
+					return
+				}
+				if ref.Type != "step" || ref.Name != "analyze" {
+					t.Errorf("ref = %v, want step(analyze)", ref)
+				}
+				if len(ref.Path) != 1 || ref.Path[0] != "output" {
+					t.Errorf("ref.Path = %v, want [output]", ref.Path)
+				}
+			},
+		},
+		{
+			name:      "config_no_name",
+			input:     `config { api_key: $OPENAI_API_KEY }`,
+			wantCount: 1,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				if e.Type() != "config" {
+					t.Errorf("Type() = %q, want config", e.Type())
+				}
+			},
+		},
+		{
+			name:      "multiple_entities",
+			input:     `agent "a1" { model: "gpt-4" } agent "a2" { model: "gpt-3.5" }`,
+			wantCount: 2,
 		},
 		{
 			name:      "empty_input",
 			input:     "",
-			want:      nil,
-			wantError: false,
+			wantCount: 0,
 		},
 		{
 			name:      "whitespace_only",
 			input:     "   \n\t  \n  ",
-			want:      nil,
-			wantError: false,
+			wantCount: 0,
 		},
 		{
 			name:      "comment_only",
 			input:     "# This is a comment",
-			want:      nil,
-			wantError: false,
+			wantCount: 0,
 		},
 		{
-			name: "entity_with_comment",
-			input: `# Define a file
-file "test.txt" path;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "test.txt",
-					Property: "path",
-				},
-			},
-			wantError: false,
-		},
-		{
-			name:  "entity_with_inline_comment",
-			input: `file "test.txt" path; # This is a file entity`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "test.txt",
-					Property: "path",
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "multiple_entities_with_comments",
-			input: `# File declaration
-file "config.json" contents;
-# Agent declaration
-agent "validator" instruction;
-# Task declaration
-task "build" schedule;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "config.json",
-					Property: "contents",
-				},
-				&ast.AgentEntity{
-					Name:     "validator",
-					Property: "instruction",
-				},
-				&ast.TaskEntity{
-					Name:     "build",
-					Property: "schedule",
-				},
-			},
-			wantError: false,
+			name: "multiline_with_comments",
+			input: `# Agent definition
+agent "reviewer" {
+    model: "gpt-4o"
+    # Temperature setting
+    temperature: 0.5
+}`,
+			wantCount: 1,
 		},
 	}
 
-	runParserTests(t, tests)
-}
-
-func TestParser_Parse_Errors(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		want      []ast.Entity
-		wantError bool
-	}{
-		{
-			name:      "invalid_entity_type",
-			input:     `unknown "test" prop;`,
-			want:      nil,
-			wantError: true,
-		},
-		{
-			name:      "missing_property",
-			input:     `file "test.txt";`,
-			want:      nil,
-			wantError: true,
-		},
-		{
-			name:      "multiple_properties",
-			input:     `file "test.txt" path extra;`,
-			want:      nil,
-			wantError: true,
-		},
-		{
-			name:      "invalid_file_path",
-			input:     `file path path;`,
-			want:      nil,
-			wantError: true,
-		},
-		{
-			name:      "missing_agent_name",
-			input:     `agent model;`,
-			want:      nil,
-			wantError: true,
-		},
-	}
-
-	runParserTests(t, tests)
-}
-
-func TestParser_Parse_MultilineContent(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		want      []ast.Entity
-		wantError bool
-	}{
-		{
-			name: "multiline_file_content",
-			input: `file "script.sh" contents ` + "```" + `
-#!/bin/bash
-echo 'Hello World'
-exit 0
-` + "```" + `;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Property: "contents",
-					Path:     "#!/bin/bash\necho 'Hello World'\nexit 0\n",
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "multiline_with_backticks",
-			input: `file "code.go" contents ` + "```" + `
-func main() {
-    fmt.Println("Hello world")
-}
-` + "```" + `;`,
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Property: "contents",
-					Path:     "func main() {\n    fmt.Println(\"Hello world\")\n}\n",
-				},
-			},
-			wantError: false,
-		},
-	}
-
-	runParserTests(t, tests)
-}
-
-func TestParser_Parse_ComplexScenarios(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		want      []ast.Entity
-		wantError bool
-	}{
-		{
-			name: "multiple_files_with_content",
-			input: strings.TrimSpace(`file "test1.sh" contents ` + "```" + `
-#!/bin/bash
-echo "test1"
-` + "```" + `;
-file "test2.sh" contents ` + "```" + `
-#!/bin/bash
-echo "test2"
-` + "```" + `;`),
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Property: "contents",
-					Path:     "#!/bin/bash\necho \"test1\"\n",
-				},
-				&ast.FileEntity{
-					Property: "contents",
-					Path:     "#!/bin/bash\necho \"test2\"\n",
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "mixed_entities_with_whitespace",
-			input: strings.TrimSpace(`
-file "main.go" path;
-agent "gpt-4" model;
-file "test.txt" contents;`),
-			want: []ast.Entity{
-				&ast.FileEntity{
-					Path:     "main.go",
-					Property: "path",
-				},
-				&ast.AgentEntity{
-					Name:     "gpt-4",
-					Property: "model",
-				},
-				&ast.FileEntity{
-					Path:     "test.txt",
-					Property: "contents",
-				},
-			},
-			wantError: false,
-		},
-	}
-
-	runParserTests(t, tests)
-}
-
-func runParserTests(t *testing.T, tests []struct {
-	name      string
-	input     string
-	want      []ast.Entity
-	wantError bool
-}) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := New(tt.input)
@@ -266,76 +214,160 @@ func runParserTests(t *testing.T, tests []struct {
 				return
 			}
 
-			if !tt.wantError {
-				if len(got) != len(tt.want) {
-					t.Errorf("Parser.Parse() got %v entities, want %v", len(got), len(tt.want))
-					return
-				}
+			if len(got) != tt.wantCount {
+				t.Errorf("Parser.Parse() got %d entities, want %d", len(got), tt.wantCount)
+				return
+			}
 
-				for i, entity := range got {
-					if entity.Type() != tt.want[i].Type() {
-						t.Errorf("Entity[%d].Type() = %v, want %v", i, entity.Type(), tt.want[i].Type())
-					}
+			if tt.checkFirst != nil && len(got) > 0 {
+				tt.checkFirst(t, got[0])
+			}
+		})
+	}
+}
 
-					switch e := entity.(type) {
-					case *ast.FileEntity:
-						want := tt.want[i].(*ast.FileEntity)
-						if e.Property != want.Property || e.Path != want.Path {
-							t.Errorf("FileEntity[%d] = {Property: %q, Path: %q}, want {Property: %q, Path: %q}",
-								i, e.Property, e.Path, want.Property, want.Path)
-						}
-					case *ast.AgentEntity:
-						want := tt.want[i].(*ast.AgentEntity)
-						if e.Name != want.Name || e.Property != want.Property {
-							t.Errorf("AgentEntity[%d] = {Name: %q, Property: %q}, want {Name: %q, Property: %q}",
-								i, e.Name, e.Property, want.Name, want.Property)
-						}
-					}
+// TestParser_Parse_LegacySyntax tests backward compatibility with legacy single-line syntax
+func TestParser_Parse_LegacySyntax(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantCount int
+		wantError bool
+	}{
+		{
+			name:      "legacy_file_entity",
+			input:     `file "test.txt" path;`,
+			wantCount: 1,
+			wantError: false,
+		},
+		{
+			name:      "legacy_agent_entity",
+			input:     `agent "gpt-4" model;`,
+			wantCount: 1,
+			wantError: false,
+		},
+		{
+			name:      "legacy_multiple_entities",
+			input:     `file "test.txt" path; agent "gpt-4" model;`,
+			wantCount: 2,
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("Parser.Parse() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+
+			if len(got) != tt.wantCount {
+				t.Errorf("Parser.Parse() got %d entities, want %d", len(got), tt.wantCount)
+			}
+		})
+	}
+}
+
+// TestParser_Parse_Errors tests error handling
+func TestParser_Parse_Errors(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantError   bool
+		errContains string
+	}{
+		{
+			name:        "invalid_entity_type",
+			input:       `unknown "test" { }`,
+			wantError:   true,
+			errContains: "unknown entity type",
+		},
+		{
+			name:        "missing_entity_name",
+			input:       `agent { model: "gpt-4" }`,
+			wantError:   true,
+			errContains: "expected entity name",
+		},
+		{
+			name:        "unclosed_block",
+			input:       `agent "test" { model: "gpt-4"`,
+			wantError:   true,
+			errContains: "unclosed block",
+		},
+		{
+			name:        "unclosed_array",
+			input:       `agent "test" { tools: [a, b }`,
+			wantError:   true,
+			errContains: "",
+		},
+		{
+			name:        "missing_colon",
+			input:       `agent "test" { model "gpt-4" }`,
+			wantError:   true,
+			errContains: "expected COLON",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			_, err := p.Parse()
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("Parser.Parse() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+
+			if tt.wantError && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want containing %q", err.Error(), tt.errContains)
 				}
 			}
 		})
 	}
 }
 
-func BenchmarkParser_Parse(b *testing.B) {
-	input := `file "test.txt" path; agent "gpt-4" model;`
-	p := New(input)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p.Parse()
+// TestParser_Parse_MultilineStrings tests multiline string content
+func TestParser_Parse_MultilineStrings(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantCount int
+		wantError bool
+	}{
+		{
+			name: "multiline_instruction",
+			input: `agent "reviewer" {
+    instruction: ` + "```" + `
+You are a code reviewer.
+Review the following code for bugs and style issues.
+` + "```" + `
+}`,
+			wantCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("Parser.Parse() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+
+			if len(got) != tt.wantCount {
+				t.Errorf("Parser.Parse() got %d entities, want %d", len(got), tt.wantCount)
+			}
+		})
 	}
 }
 
-func BenchmarkParser_Parse_Small(b *testing.B) {
-	input := `file "test.txt" path; agent "gpt-4" model; task "build" instruction;`
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p := New(input)
-		p.Parse()
-	}
-}
-
-func BenchmarkParser_Parse_Large(b *testing.B) {
-	// Generate 200 entities
-	var sb strings.Builder
-	for i := 0; i < 200; i++ {
-		switch i % 3 {
-		case 0:
-			sb.WriteString(`file "file` + string(rune('0'+i%10)) + `.txt" path; `)
-		case 1:
-			sb.WriteString(`agent "agent` + string(rune('0'+i%10)) + `" instruction; `)
-		case 2:
-			sb.WriteString(`task "task` + string(rune('0'+i%10)) + `" schedule; `)
-		}
-	}
-	input := sb.String()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		p := New(input)
-		p.Parse()
-	}
-}
-
+// TestParser_ParseWithRecovery tests error recovery
 func TestParser_ParseWithRecovery(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -346,36 +378,22 @@ func TestParser_ParseWithRecovery(t *testing.T) {
 	}{
 		{
 			name:          "no_errors",
-			input:         `file "test.txt" path; agent "gpt-4" model;`,
-			wantEntities:  2,
+			input:         `agent "test" { model: "gpt-4" }`,
+			wantEntities:  1,
 			wantErrors:    0,
 			checkFirstErr: "",
 		},
 		{
-			name:          "recover_after_missing_property",
-			input:         `file "test.txt"; agent "gpt-4" model;`,
-			wantEntities:  1, // Should recover and parse second entity
-			wantErrors:    1,
-			checkFirstErr: "expected property",
-		},
-		{
-			name:          "recover_after_unknown_entity",
-			input:         `unknown "test" prop; file "test.txt" path;`,
+			name:          "recover_after_bad_entity",
+			input:         `unknown "x" { } agent "test" { model: "gpt-4" }`,
 			wantEntities:  1,
 			wantErrors:    1,
 			checkFirstErr: "unknown entity type",
 		},
 		{
 			name:          "multiple_errors_with_recovery",
-			input:         `unknown "a" x; file "test.txt" path; badtype "b" y; agent "gpt" model;`,
-			wantEntities:  2,
-			wantErrors:    2,
-			checkFirstErr: "unknown entity type",
-		},
-		{
-			name:          "all_errors",
-			input:         `unknown "a" x; badtype "b" y;`,
-			wantEntities:  0,
+			input:         `unknown "a" { } agent "test" { model: "gpt-4" } badtype "b" { }`,
+			wantEntities:  1,
 			wantErrors:    2,
 			checkFirstErr: "unknown entity type",
 		},
@@ -456,4 +474,29 @@ func TestParseResult_ErrorString(t *testing.T) {
 			t.Errorf("ErrorString() = %q, want %q", result.ErrorString(), expected)
 		}
 	})
+}
+
+func BenchmarkParser_Parse_BlockSyntax(b *testing.B) {
+	input := `agent "reviewer" { model: "gpt-4o" temperature: 0.7 tools: [read_file, write_file] }`
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := New(input)
+		p.Parse()
+	}
+}
+
+func BenchmarkParser_Parse_Large(b *testing.B) {
+	// Generate 100 entities
+	var sb strings.Builder
+	for i := 0; i < 100; i++ {
+		sb.WriteString(`agent "agent`)
+		sb.WriteString(string(rune('0' + i%10)))
+		sb.WriteString(`" { model: "gpt-4" temperature: 0.7 } `)
+	}
+	input := sb.String()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := New(input)
+		p.Parse()
+	}
 }

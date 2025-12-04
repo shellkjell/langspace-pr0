@@ -72,7 +72,9 @@ type WorkspaceStats struct {
 	TotalEntities      int
 	FileEntities       int
 	AgentEntities      int
-	TaskEntities       int
+	ToolEntities       int
+	IntentEntities     int
+	PipelineEntities   int
 	TotalRelationships int
 	TotalHooks         int
 	HasValidator       bool
@@ -80,7 +82,6 @@ type WorkspaceStats struct {
 
 // Stat returns statistics about the workspace
 func (w *Workspace) Stat() WorkspaceStats {
-
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -103,8 +104,12 @@ func (w *Workspace) Stat() WorkspaceStats {
 			stats.FileEntities++
 		case "agent":
 			stats.AgentEntities++
-		case "task":
-			stats.TaskEntities++
+		case "tool":
+			stats.ToolEntities++
+		case "intent":
+			stats.IntentEntities++
+		case "pipeline":
+			stats.PipelineEntities++
 		}
 	}
 
@@ -155,24 +160,6 @@ func (w *Workspace) AddEntity(entity ast.Entity) error {
 		if err := w.validator.ValidateEntity(entity); err != nil {
 			return fmt.Errorf("validation failed: %w", err)
 		}
-	} else {
-		// Validate entity based on type
-		switch entity.Type() {
-		case "file":
-			if len(entity.Properties()) != 2 {
-				return fmt.Errorf("file entity must have exactly 2 properties (name and contents)")
-			}
-		case "agent":
-			if len(entity.Properties()) != 2 {
-				return fmt.Errorf("agent entity must have exactly 2 properties (name and instruction)")
-			}
-		case "task":
-			if len(entity.Properties()) != 2 {
-				return fmt.Errorf("task entity must have exactly 2 properties (name and instruction)")
-			}
-		default:
-			return fmt.Errorf("unknown entity type: %s", entity.Type())
-		}
 	}
 
 	w.entities = append(w.entities, entity)
@@ -208,31 +195,41 @@ func (w *Workspace) GetEntitiesByType(entityType string) []ast.Entity {
 	return result
 }
 
+// GetEntityByName returns an entity by type and name
+func (w *Workspace) GetEntityByName(entityType, entityName string) (ast.Entity, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	for _, entity := range w.entities {
+		if entity.Type() == entityType && entity.Name() == entityName {
+			return entity, true
+		}
+	}
+	return nil, false
+}
+
 // RemoveEntity removes an entity from the workspace by type and name
 func (w *Workspace) RemoveEntity(entityType, entityName string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	for i, entity := range w.entities {
-		if entity.Type() == entityType {
-			props := entity.Properties()
-			if len(props) > 0 && props[0] == entityName {
-				// Run before-remove hooks
-				if err := w.runHooks(HookBeforeRemove, entity); err != nil {
-					return err
-				}
-
-				// Remove the entity
-				w.entities = append(w.entities[:i], w.entities[i+1:]...)
-
-				// Remove any relationships involving this entity
-				w.removeRelationshipsForEntity(entityType, entityName)
-
-				// Run after-remove hooks
-				_ = w.runHooks(HookAfterRemove, entity)
-
-				return nil
+		if entity.Type() == entityType && entity.Name() == entityName {
+			// Run before-remove hooks
+			if err := w.runHooks(HookBeforeRemove, entity); err != nil {
+				return err
 			}
+
+			// Remove the entity
+			w.entities = append(w.entities[:i], w.entities[i+1:]...)
+
+			// Remove any relationships involving this entity
+			w.removeRelationshipsForEntity(entityType, entityName)
+
+			// Run after-remove hooks
+			_ = w.runHooks(HookAfterRemove, entity)
+
+			return nil
 		}
 	}
 
@@ -270,12 +267,9 @@ func (w *Workspace) AddRelationship(sourceType, sourceName, targetType, targetNa
 	// Validate that source entity exists
 	sourceFound := false
 	for _, entity := range w.entities {
-		if entity.Type() == sourceType {
-			props := entity.Properties()
-			if len(props) > 0 && props[0] == sourceName {
-				sourceFound = true
-				break
-			}
+		if entity.Type() == sourceType && entity.Name() == sourceName {
+			sourceFound = true
+			break
 		}
 	}
 	if !sourceFound {
@@ -285,12 +279,9 @@ func (w *Workspace) AddRelationship(sourceType, sourceName, targetType, targetNa
 	// Validate that target entity exists
 	targetFound := false
 	for _, entity := range w.entities {
-		if entity.Type() == targetType {
-			props := entity.Properties()
-			if len(props) > 0 && props[0] == targetName {
-				targetFound = true
-				break
-			}
+		if entity.Type() == targetType && entity.Name() == targetName {
+			targetFound = true
+			break
 		}
 	}
 	if !targetFound {
@@ -365,12 +356,9 @@ func (w *Workspace) GetRelatedEntities(entityType, entityName string, relType Re
 		}
 
 		for _, entity := range w.entities {
-			if entity.Type() == targetType {
-				props := entity.Properties()
-				if len(props) > 0 && props[0] == targetName {
-					result = append(result, entity)
-					break
-				}
+			if entity.Type() == targetType && entity.Name() == targetName {
+				result = append(result, entity)
+				break
 			}
 		}
 	}

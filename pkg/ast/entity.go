@@ -8,6 +8,62 @@ import (
 // It defines the core entity types and their behaviors, supporting the language's
 // type system and validation rules.
 
+// Value represents any value in the AST
+type Value interface {
+	isValue()
+}
+
+// StringValue represents a string literal
+type StringValue struct {
+	Value string
+}
+
+func (s StringValue) isValue() {}
+
+// NumberValue represents a numeric literal
+type NumberValue struct {
+	Value float64
+}
+
+func (n NumberValue) isValue() {}
+
+// BoolValue represents a boolean literal
+type BoolValue struct {
+	Value bool
+}
+
+func (b BoolValue) isValue() {}
+
+// ArrayValue represents an array of values
+type ArrayValue struct {
+	Elements []Value
+}
+
+func (a ArrayValue) isValue() {}
+
+// ObjectValue represents an object/map of key-value pairs
+type ObjectValue struct {
+	Properties map[string]Value
+}
+
+func (o ObjectValue) isValue() {}
+
+// ReferenceValue represents a reference to another entity (e.g., agent("name"))
+type ReferenceValue struct {
+	Type string // "agent", "file", "tool", "step", etc.
+	Name string
+	Path []string // For dot access, e.g., step("x").output
+}
+
+func (r ReferenceValue) isValue() {}
+
+// VariableValue represents a variable reference (e.g., $input)
+type VariableValue struct {
+	Name string
+}
+
+func (v VariableValue) isValue() {}
+
 // Entity represents a LangSpace entity, which is the fundamental building block
 // of the language. Each entity has a type and a set of properties that define
 // its behavior and characteristics.
@@ -15,12 +71,17 @@ type Entity interface {
 	// Type returns the entity's type identifier (e.g., "file", "agent")
 	Type() string
 
-	// Properties returns the entity's current property list
-	Properties() []string
+	// Name returns the entity's name/identifier
+	Name() string
 
-	// AddProperty adds a new property to the entity, validating it according
-	// to the entity's type-specific rules
-	AddProperty(prop string) error
+	// Properties returns the entity's property map
+	Properties() map[string]Value
+
+	// GetProperty returns a property value by key
+	GetProperty(key string) (Value, bool)
+
+	// SetProperty sets a property value
+	SetProperty(key string, value Value)
 
 	// GetMetadata returns the value for a metadata key, and whether it exists
 	GetMetadata(key string) (string, bool)
@@ -30,224 +91,200 @@ type Entity interface {
 
 	// AllMetadata returns a copy of all metadata key-value pairs
 	AllMetadata() map[string]string
+
+	// Line returns the source line where this entity was defined
+	Line() int
+
+	// Column returns the source column where this entity was defined
+	Column() int
+
+	// SetLocation sets the source location
+	SetLocation(line, column int)
 }
 
 // BaseEntity provides a base implementation of Entity with common functionality
-// shared across all entity types. It manages basic property storage and type
-// information.
 type BaseEntity struct {
-	entityType string   // The type identifier for this entity
-	properties []string // List of properties associated with this entity
+	entityType string
+	name       string
+	properties map[string]Value
+	metadata   map[string]string
+	line       int
+	column     int
+}
+
+// NewBaseEntity creates a new BaseEntity
+func NewBaseEntity(entityType, name string) *BaseEntity {
+	return &BaseEntity{
+		entityType: entityType,
+		name:       name,
+		properties: make(map[string]Value),
+		metadata:   make(map[string]string),
+	}
+}
+
+func (e *BaseEntity) Type() string                      { return e.entityType }
+func (e *BaseEntity) Name() string                      { return e.name }
+func (e *BaseEntity) Properties() map[string]Value      { return e.properties }
+func (e *BaseEntity) Line() int                         { return e.line }
+func (e *BaseEntity) Column() int                       { return e.column }
+func (e *BaseEntity) SetLocation(line, column int)      { e.line = line; e.column = column }
+func (e *BaseEntity) SetProperty(key string, val Value) { e.properties[key] = val }
+
+func (e *BaseEntity) GetProperty(key string) (Value, bool) {
+	v, ok := e.properties[key]
+	return v, ok
+}
+
+func (e *BaseEntity) GetMetadata(key string) (string, bool) {
+	if e.metadata == nil {
+		return "", false
+	}
+	val, ok := e.metadata[key]
+	return val, ok
+}
+
+func (e *BaseEntity) SetMetadata(key, value string) {
+	if e.metadata == nil {
+		e.metadata = make(map[string]string)
+	}
+	e.metadata[key] = value
+}
+
+func (e *BaseEntity) AllMetadata() map[string]string {
+	result := make(map[string]string)
+	for k, v := range e.metadata {
+		result[k] = v
+	}
+	return result
+}
+
+// FileEntity represents a file entity in LangSpace
+type FileEntity struct {
+	*BaseEntity
+}
+
+// NewFileEntity creates a new file entity
+func NewFileEntity(name string) *FileEntity {
+	return &FileEntity{BaseEntity: NewBaseEntity("file", name)}
+}
+
+// AgentEntity represents an agent entity in LangSpace
+type AgentEntity struct {
+	*BaseEntity
+}
+
+// NewAgentEntity creates a new agent entity
+func NewAgentEntity(name string) *AgentEntity {
+	return &AgentEntity{BaseEntity: NewBaseEntity("agent", name)}
+}
+
+// ToolEntity represents a tool entity in LangSpace
+type ToolEntity struct {
+	*BaseEntity
+}
+
+// NewToolEntity creates a new tool entity
+func NewToolEntity(name string) *ToolEntity {
+	return &ToolEntity{BaseEntity: NewBaseEntity("tool", name)}
+}
+
+// IntentEntity represents an intent entity in LangSpace
+type IntentEntity struct {
+	*BaseEntity
+}
+
+// NewIntentEntity creates a new intent entity
+func NewIntentEntity(name string) *IntentEntity {
+	return &IntentEntity{BaseEntity: NewBaseEntity("intent", name)}
+}
+
+// PipelineEntity represents a pipeline entity in LangSpace
+type PipelineEntity struct {
+	*BaseEntity
+	Steps []*StepEntity
+}
+
+// NewPipelineEntity creates a new pipeline entity
+func NewPipelineEntity(name string) *PipelineEntity {
+	return &PipelineEntity{
+		BaseEntity: NewBaseEntity("pipeline", name),
+		Steps:      make([]*StepEntity, 0),
+	}
+}
+
+// AddStep adds a step to the pipeline
+func (p *PipelineEntity) AddStep(step *StepEntity) {
+	p.Steps = append(p.Steps, step)
+}
+
+// StepEntity represents a step within a pipeline
+type StepEntity struct {
+	*BaseEntity
+}
+
+// NewStepEntity creates a new step entity
+func NewStepEntity(name string) *StepEntity {
+	return &StepEntity{BaseEntity: NewBaseEntity("step", name)}
+}
+
+// TriggerEntity represents a trigger entity in LangSpace
+type TriggerEntity struct {
+	*BaseEntity
+}
+
+// NewTriggerEntity creates a new trigger entity
+func NewTriggerEntity(name string) *TriggerEntity {
+	return &TriggerEntity{BaseEntity: NewBaseEntity("trigger", name)}
+}
+
+// ConfigEntity represents a config block in LangSpace
+type ConfigEntity struct {
+	*BaseEntity
+}
+
+// NewConfigEntity creates a new config entity
+func NewConfigEntity() *ConfigEntity {
+	return &ConfigEntity{BaseEntity: NewBaseEntity("config", "")}
+}
+
+// MCPEntity represents an MCP server connection
+type MCPEntity struct {
+	*BaseEntity
+}
+
+// NewMCPEntity creates a new MCP entity
+func NewMCPEntity(name string) *MCPEntity {
+	return &MCPEntity{BaseEntity: NewBaseEntity("mcp", name)}
 }
 
 // NewEntity creates a new Entity based on the provided type identifier.
-// It serves as a factory function for creating type-specific entity instances.
-//
-// Parameters:
-//   - entityType: String identifier for the desired entity type
-//
-// Returns:
-//   - Entity: A new entity instance of the requested type
-//   - error: Error if the entity type is unknown
-//
-// Supported entity types:
-//   - "file": Creates a FileEntity for file system operations
-//   - "agent": Creates an AgentEntity for automation tasks
-//   - "task": Creates a TaskEntity for task management
-func NewEntity(entityType string) (Entity, error) {
+func NewEntity(entityType string, name string) (Entity, error) {
 	switch entityType {
 	case "file":
-		return &FileEntity{}, nil
+		return NewFileEntity(name), nil
 	case "agent":
-		return &AgentEntity{}, nil
-	case "task":
-		return &TaskEntity{}, nil
+		return NewAgentEntity(name), nil
+	case "tool":
+		return NewToolEntity(name), nil
+	case "intent":
+		return NewIntentEntity(name), nil
+	case "pipeline":
+		return NewPipelineEntity(name), nil
+	case "step":
+		return NewStepEntity(name), nil
+	case "trigger":
+		return NewTriggerEntity(name), nil
+	case "config":
+		return NewConfigEntity(), nil
+	case "mcp":
+		return NewMCPEntity(name), nil
 	default:
 		return nil, fmt.Errorf("unknown entity type: %s", entityType)
 	}
 }
 
-// Type returns the entity type
-func (e *BaseEntity) Type() string {
-	return e.entityType
-}
-
-// Properties returns the entity properties
-func (e *BaseEntity) Properties() []string {
-	return e.properties
-}
-
-// FileEntity represents a file entity in LangSpace, used to define and
-// manipulate file system resources. It supports two property types:
-//   - path: The file system path
-//   - contents: The file contents as a string
-type FileEntity struct {
-	Path     string            // File system path
-	Property string            // Property type (either "path" or "contents")
-	metadata map[string]string // Key-value metadata storage
-}
-
-// Type returns the type of the entity
-func (f *FileEntity) Type() string {
-	return "file"
-}
-
-// Properties returns the properties of the entity
-func (f *FileEntity) Properties() []string {
-	return []string{f.Path, f.Property}
-}
-
-// AddProperty adds a property to the entity
-func (f *FileEntity) AddProperty(prop string) error {
-	if f.Path == "" {
-		f.Path = prop
-		return nil
-	}
-	if f.Property == "" {
-		f.Property = prop
-		return nil
-	}
-	return fmt.Errorf("file entity already has all properties set")
-}
-
-// GetMetadata returns the value for a metadata key, and whether it exists
-func (f *FileEntity) GetMetadata(key string) (string, bool) {
-	if f.metadata == nil {
-		return "", false
-	}
-	val, ok := f.metadata[key]
-	return val, ok
-}
-
-// SetMetadata sets a metadata key-value pair on the entity
-func (f *FileEntity) SetMetadata(key, value string) {
-	if f.metadata == nil {
-		f.metadata = make(map[string]string)
-	}
-	f.metadata[key] = value
-}
-
-// AllMetadata returns a copy of all metadata key-value pairs
-func (f *FileEntity) AllMetadata() map[string]string {
-	result := make(map[string]string)
-	for k, v := range f.metadata {
-		result[k] = v
-	}
-	return result
-}
-
-// AgentEntity represents an agent entity in LangSpace, used to define
-// automated tasks and validations. Agents can interact with other entities
-// and perform operations based on their instructions.
-type AgentEntity struct {
-	Name     string            // Agent identifier
-	Property string            // Property type (e.g., "instruction")
-	metadata map[string]string // Key-value metadata storage
-}
-
-// Type returns the type of the entity
-func (a *AgentEntity) Type() string {
-	return "agent"
-}
-
-// Properties returns the properties of the entity
-func (a *AgentEntity) Properties() []string {
-	return []string{a.Name, a.Property}
-}
-
-// AddProperty adds a property to the entity
-func (a *AgentEntity) AddProperty(prop string) error {
-	if a.Name == "" {
-		a.Name = prop
-		return nil
-	}
-	if a.Property == "" {
-		a.Property = prop
-		return nil
-	}
-	return fmt.Errorf("agent entity already has all properties set")
-}
-
-// GetMetadata returns the value for a metadata key, and whether it exists
-func (a *AgentEntity) GetMetadata(key string) (string, bool) {
-	if a.metadata == nil {
-		return "", false
-	}
-	val, ok := a.metadata[key]
-	return val, ok
-}
-
-// SetMetadata sets a metadata key-value pair on the entity
-func (a *AgentEntity) SetMetadata(key, value string) {
-	if a.metadata == nil {
-		a.metadata = make(map[string]string)
-	}
-	a.metadata[key] = value
-}
-
-// AllMetadata returns a copy of all metadata key-value pairs
-func (a *AgentEntity) AllMetadata() map[string]string {
-	result := make(map[string]string)
-	for k, v := range a.metadata {
-		result[k] = v
-	}
-	return result
-}
-
-// TaskEntity represents a task entity in LangSpace, used to define
-// and manage tasks within the virtual workspace. Tasks can have
-// instructions and can be automated based on triggers.
-type TaskEntity struct {
-	Name     string            // Task identifier
-	Property string            // Property type (e.g., "instruction", "schedule")
-	metadata map[string]string // Key-value metadata storage
-}
-
-// Type returns the type of the entity
-func (t *TaskEntity) Type() string {
-	return "task"
-}
-
-// Properties returns the properties of the entity
-func (t *TaskEntity) Properties() []string {
-	return []string{t.Name, t.Property}
-}
-
-// AddProperty adds a property to the entity
-func (t *TaskEntity) AddProperty(prop string) error {
-	if t.Name == "" {
-		t.Name = prop
-		return nil
-	}
-	if t.Property == "" {
-		t.Property = prop
-		return nil
-	}
-	return fmt.Errorf("task entity already has all properties set")
-}
-
-// GetMetadata returns the value for a metadata key, and whether it exists
-func (t *TaskEntity) GetMetadata(key string) (string, bool) {
-	if t.metadata == nil {
-		return "", false
-	}
-	val, ok := t.metadata[key]
-	return val, ok
-}
-
-// SetMetadata sets a metadata key-value pair on the entity
-func (t *TaskEntity) SetMetadata(key, value string) {
-	if t.metadata == nil {
-		t.metadata = make(map[string]string)
-	}
-	t.metadata[key] = value
-}
-
-// AllMetadata returns a copy of all metadata key-value pairs
-func (t *TaskEntity) AllMetadata() map[string]string {
-	result := make(map[string]string)
-	for k, v := range t.metadata {
-		result[k] = v
-	}
-	return result
+// Legacy support - keeping old function signature for compatibility
+// Deprecated: Use NewEntity(entityType, name) instead
+func NewEntityLegacy(entityType string) (Entity, error) {
+	return NewEntity(entityType, "")
 }

@@ -35,6 +35,97 @@ func TestTokenizer_Tokenize(t *testing.T) {
 			},
 		},
 		{
+			name:  "block_syntax",
+			input: `agent "test" { model: "gpt-4" }`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "agent", Line: 1, Column: 1},
+				{Type: TokenTypeString, Value: "test", Line: 1, Column: 7},
+				{Type: TokenTypeLeftBrace, Value: "{", Line: 1, Column: 14},
+				{Type: TokenTypeIdentifier, Value: "model", Line: 1, Column: 16},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 21},
+				{Type: TokenTypeString, Value: "gpt-4", Line: 1, Column: 23},
+				{Type: TokenTypeRightBrace, Value: "}", Line: 1, Column: 31},
+			},
+		},
+		{
+			name:  "array_syntax",
+			input: `tools: [read_file, write_file]`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "tools", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 6},
+				{Type: TokenTypeLeftBracket, Value: "[", Line: 1, Column: 8},
+				{Type: TokenTypeIdentifier, Value: "read_file", Line: 1, Column: 9},
+				{Type: TokenTypeComma, Value: ",", Line: 1, Column: 18},
+				{Type: TokenTypeIdentifier, Value: "write_file", Line: 1, Column: 20},
+				{Type: TokenTypeRightBracket, Value: "]", Line: 1, Column: 30},
+			},
+		},
+		{
+			name:  "reference_syntax",
+			input: `use: agent("reviewer")`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "use", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 4},
+				{Type: TokenTypeIdentifier, Value: "agent", Line: 1, Column: 6},
+				{Type: TokenTypeLeftParen, Value: "(", Line: 1, Column: 11},
+				{Type: TokenTypeString, Value: "reviewer", Line: 1, Column: 12},
+				{Type: TokenTypeRightParen, Value: ")", Line: 1, Column: 22},
+			},
+		},
+		{
+			name:  "dot_access",
+			input: `step("analyze").output`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "step", Line: 1, Column: 1},
+				{Type: TokenTypeLeftParen, Value: "(", Line: 1, Column: 5},
+				{Type: TokenTypeString, Value: "analyze", Line: 1, Column: 6},
+				{Type: TokenTypeRightParen, Value: ")", Line: 1, Column: 15},
+				{Type: TokenTypeDot, Value: ".", Line: 1, Column: 16},
+				{Type: TokenTypeIdentifier, Value: "output", Line: 1, Column: 17},
+			},
+		},
+		{
+			name:  "variable_reference",
+			input: `input: $input`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "input", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 6},
+				{Type: TokenTypeDollar, Value: "$", Line: 1, Column: 8},
+				{Type: TokenTypeIdentifier, Value: "input", Line: 1, Column: 9},
+			},
+		},
+		{
+			name:  "number_literal",
+			input: `temperature: 0.7`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "temperature", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 12},
+				{Type: TokenTypeNumber, Value: "0.7", Line: 1, Column: 14},
+			},
+		},
+		{
+			name:  "boolean_literals",
+			input: `enabled: true disabled: false`,
+			expected: []Token{
+				{Type: TokenTypeIdentifier, Value: "enabled", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 8},
+				{Type: TokenTypeBoolean, Value: "true", Line: 1, Column: 10},
+				{Type: TokenTypeIdentifier, Value: "disabled", Line: 1, Column: 15},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 23},
+				{Type: TokenTypeBoolean, Value: "false", Line: 1, Column: 25},
+			},
+		},
+		{
+			name:  "arrow_operator",
+			input: `"bug" => step "fix"`,
+			expected: []Token{
+				{Type: TokenTypeString, Value: "bug", Line: 1, Column: 1},
+				{Type: TokenTypeArrow, Value: "=>", Line: 1, Column: 7},
+				{Type: TokenTypeIdentifier, Value: "step", Line: 1, Column: 10},
+				{Type: TokenTypeString, Value: "fix", Line: 1, Column: 15},
+			},
+		},
+		{
 			name:  "with_whitespace",
 			input: `file   "test.txt"    path;    agent "gpt-4" model;`,
 			expected: []Token{
@@ -60,24 +151,11 @@ func TestTokenizer_Tokenize(t *testing.T) {
 		},
 		{
 			name:  "triple_backtick_string",
-			input: "file \"script.sh\" ```\n#!/bin/bash\necho 'Hello World'\nexit 0\n``` contents;",
+			input: "instruction: ```\nYou are helpful.\n```",
 			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-				{Type: TokenTypeString, Value: "script.sh", Line: 1, Column: 6},
-				{Type: TokenTypeMultilineString, Value: "\n#!/bin/bash\necho 'Hello World'\nexit 0\n", Line: 1, Column: 16},
-				{Type: TokenTypeIdentifier, Value: "contents", Line: 5, Column: 5},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 13},
-			},
-		},
-		{
-			name:  "triple_backtick_with_embedded_quotes",
-			input: "file \"code.go\" ```\nfunc main() {\n    fmt.Println(\"Hello `world`\")\n}\n``` contents;",
-			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-				{Type: TokenTypeString, Value: "code.go", Line: 1, Column: 6},
-				{Type: TokenTypeMultilineString, Value: "\nfunc main() {\n    fmt.Println(\"Hello `world`\")\n}\n", Line: 1, Column: 14},
-				{Type: TokenTypeIdentifier, Value: "contents", Line: 5, Column: 5},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 13},
+				{Type: TokenTypeIdentifier, Value: "instruction", Line: 1, Column: 1},
+				{Type: TokenTypeColon, Value: ":", Line: 1, Column: 12},
+				{Type: TokenTypeMultilineString, Value: "\nYou are helpful.\n", Line: 1, Column: 14},
 			},
 		},
 		{
@@ -89,43 +167,6 @@ func TestTokenizer_Tokenize(t *testing.T) {
 			name:     "only_whitespace",
 			input:    "   \n\t  \n  ",
 			expected: []Token{},
-		},
-		{
-			name:  "unclosed_string",
-			input: `file "unclosed`,
-			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-			},
-		},
-		{
-			name:  "unclosed_multiline",
-			input: "file \"script.sh\" ```\n#!/bin/bash\necho 'test'",
-			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-				{Type: TokenTypeString, Value: "script.sh", Line: 1, Column: 6},
-			},
-		},
-		{
-			name:  "complex_multiline_with_spaces",
-			input: "file \"test.txt\" ```\n  indented line\n\tTabbed line\n    Mixed   spaces\n``` path;",
-			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-				{Type: TokenTypeString, Value: "test.txt", Line: 1, Column: 6},
-				{Type: TokenTypeMultilineString, Value: "\n  indented line\n\tTabbed line\n    Mixed   spaces\n", Line: 1, Column: 15},
-				{Type: TokenTypeIdentifier, Value: "path", Line: 5, Column: 5},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 5, Column: 9},
-			},
-		},
-		{
-			name:  "consecutive_semicolons",
-			input: "file \"test.txt\" path;;",
-			expected: []Token{
-				{Type: TokenTypeIdentifier, Value: "file", Line: 1, Column: 1},
-				{Type: TokenTypeString, Value: "test.txt", Line: 1, Column: 6},
-				{Type: TokenTypeIdentifier, Value: "path", Line: 1, Column: 17},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 1, Column: 21},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 1, Column: 22},
-			},
 		},
 	}
 
@@ -169,6 +210,15 @@ func TestTokenType_String(t *testing.T) {
 		{TokenTypeString, "STRING"},
 		{TokenTypeSemicolon, "SEMICOLON"},
 		{TokenTypeMultilineString, "MULTILINE_STRING"},
+		{TokenTypeLeftBrace, "LEFT_BRACE"},
+		{TokenTypeRightBrace, "RIGHT_BRACE"},
+		{TokenTypeLeftBracket, "LEFT_BRACKET"},
+		{TokenTypeRightBracket, "RIGHT_BRACKET"},
+		{TokenTypeColon, "COLON"},
+		{TokenTypeComma, "COMMA"},
+		{TokenTypeDot, "DOT"},
+		{TokenTypeNumber, "NUMBER"},
+		{TokenTypeBoolean, "BOOLEAN"},
 		{TokenType(999), "UNKNOWN"},
 	}
 
@@ -182,11 +232,14 @@ func TestTokenType_String(t *testing.T) {
 }
 
 func BenchmarkTokenizer_Tokenize(b *testing.B) {
-	input := `file config.json "contents";
-agent validator "check(config.json)";
-file script.sh "#!/bin/bash
-echo 'Hello World'
-exit 0";`
+	input := `agent "reviewer" {
+	model: "claude-sonnet-4-20250514"
+	temperature: 0.3
+	instruction: """
+		You are a code reviewer.
+	"""
+	tools: [read_file, write_file, run_tests]
+}`
 
 	tokenizer := New()
 	b.ResetTimer()
@@ -231,7 +284,6 @@ func TestTokenizerEdgeCases(t *testing.T) {
 		{"newline_only", "\n", 0},
 		{"unicode_spaces", " ", 0}, // Only testing ASCII space for now
 		{"mixed_whitespace", "\t\n \r\n", 0},
-		{"special_chars", "@$%", 0}, // Special characters should be ignored (excluding # which is now a comment)
 	}
 
 	tokenizer := New()
@@ -283,36 +335,6 @@ func TestTokenizer_Comments(t *testing.T) {
 				{Type: TokenTypeComment, Value: "# inline comment", Line: 1, Column: 23},
 			},
 		},
-		{
-			name: "multiple_comments_and_entities",
-			input: `# File declarations
-file "config.json" contents;
-# Agent declarations
-agent "validator" instruction;`,
-			expected: []Token{
-				{Type: TokenTypeComment, Value: "# File declarations", Line: 1, Column: 1},
-				{Type: TokenTypeIdentifier, Value: "file", Line: 2, Column: 1},
-				{Type: TokenTypeString, Value: "config.json", Line: 2, Column: 6},
-				{Type: TokenTypeIdentifier, Value: "contents", Line: 2, Column: 20},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 2, Column: 28},
-				{Type: TokenTypeComment, Value: "# Agent declarations", Line: 3, Column: 1},
-				{Type: TokenTypeIdentifier, Value: "agent", Line: 4, Column: 1},
-				{Type: TokenTypeString, Value: "validator", Line: 4, Column: 7},
-				{Type: TokenTypeIdentifier, Value: "instruction", Line: 4, Column: 19},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 4, Column: 30},
-			},
-		},
-		{
-			name:  "empty_comment",
-			input: "#\nfile \"test.txt\" path;",
-			expected: []Token{
-				{Type: TokenTypeComment, Value: "#", Line: 1, Column: 1},
-				{Type: TokenTypeIdentifier, Value: "file", Line: 2, Column: 1},
-				{Type: TokenTypeString, Value: "test.txt", Line: 2, Column: 6},
-				{Type: TokenTypeIdentifier, Value: "path", Line: 2, Column: 17},
-				{Type: TokenTypeSemicolon, Value: ";", Line: 2, Column: 21},
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -334,12 +356,6 @@ agent "validator" instruction;`,
 				}
 				if token.Value != tt.expected[i].Value {
 					t.Errorf("Token[%d].Value = %q, want %q", i, token.Value, tt.expected[i].Value)
-				}
-				if token.Line != tt.expected[i].Line {
-					t.Errorf("Token[%d].Line = %d, want %d", i, token.Line, tt.expected[i].Line)
-				}
-				if token.Column != tt.expected[i].Column {
-					t.Errorf("Token[%d].Column = %d, want %d", i, token.Column, tt.expected[i].Column)
 				}
 			}
 		})

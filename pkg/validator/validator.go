@@ -2,7 +2,6 @@ package validator
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/shellkjell/langspace/pkg/ast"
 )
@@ -61,38 +60,38 @@ func (v *Validator) ValidateEntity(entity ast.Entity) error {
 		return v.validateFileEntity(entity)
 	case "agent":
 		return v.validateAgentEntity(entity)
-	case "task":
-		return v.validateTaskEntity(entity)
+	case "tool":
+		return v.validateToolEntity(entity)
+	case "intent":
+		return v.validateIntentEntity(entity)
+	case "pipeline":
+		return v.validatePipelineEntity(entity)
+	case "step":
+		return v.validateStepEntity(entity)
+	case "trigger":
+		return v.validateTriggerEntity(entity)
+	case "config":
+		return v.validateConfigEntity(entity)
+	case "mcp":
+		return v.validateMCPEntity(entity)
 	default:
 		return fmt.Errorf("unknown entity type: %s", entity.Type())
 	}
 }
 
 // validateFileEntity performs file-specific validation rules.
-// File entities must have exactly two properties:
-//  1. A non-empty path
-//  2. A property type of either "path" or "contents"
-//
-// Parameters:
-//   - entity: The file entity to validate
-//
-// Returns:
-//   - error: Detailed validation error if the file entity is invalid
 func (v *Validator) validateFileEntity(entity ast.Entity) error {
-	props := entity.Properties()
-	if len(props) != 2 {
-		return fmt.Errorf("file entity must have exactly 2 properties (path and property), got %d", len(props))
+	// File entities should have a name
+	if entity.Name() == "" {
+		return fmt.Errorf("file entity must have a name")
 	}
 
-	path := props[0]
-	property := props[1]
+	// Check for either path or contents property
+	_, hasPath := entity.GetProperty("path")
+	_, hasContents := entity.GetProperty("contents")
 
-	if path == "" {
-		return fmt.Errorf("file path cannot be empty")
-	}
-
-	if property != "path" && property != "contents" {
-		return fmt.Errorf("invalid file property: %s (must be 'path' or 'contents')", property)
+	if !hasPath && !hasContents {
+		return fmt.Errorf("file entity must have either 'path' or 'contents' property")
 	}
 
 	return nil
@@ -100,65 +99,114 @@ func (v *Validator) validateFileEntity(entity ast.Entity) error {
 
 // validateAgentEntity validates an agent entity
 func (v *Validator) validateAgentEntity(entity ast.Entity) error {
-	props := entity.Properties()
-	if len(props) != 2 {
-		return fmt.Errorf("agent entity must have exactly 2 properties (name and property), got %d", len(props))
+	// Agent entities should have a name
+	if entity.Name() == "" {
+		return fmt.Errorf("agent entity must have a name")
 	}
 
-	name := props[0]
-	property := props[1]
-
-	if name == "" {
-		return fmt.Errorf("agent name cannot be empty")
-	}
-
-	// Valid agent properties: instruction, model, or check(filename)
-	validProperties := []string{"instruction", "model"}
-	isValid := false
-	for _, valid := range validProperties {
-		if property == valid {
-			isValid = true
-			break
-		}
-	}
-	// Also accept check(filename) format
-	if !isValid && strings.HasPrefix(property, "check(") && strings.HasSuffix(property, ")") {
-		isValid = true
-	}
-
-	if !isValid {
-		return fmt.Errorf("invalid agent property: %s (must be 'instruction', 'model', or 'check(filename)')", property)
+	// Check for required model property
+	_, hasModel := entity.GetProperty("model")
+	if !hasModel {
+		return fmt.Errorf("agent entity must have 'model' property")
 	}
 
 	return nil
 }
 
-// validateTaskEntity validates a task entity
-func (v *Validator) validateTaskEntity(entity ast.Entity) error {
-	props := entity.Properties()
-	if len(props) != 2 {
-		return fmt.Errorf("task entity must have exactly 2 properties (name and property), got %d", len(props))
+// validateToolEntity validates a tool entity
+func (v *Validator) validateToolEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("tool entity must have a name")
 	}
 
-	name := props[0]
-	property := props[1]
+	// Tool should have either command or function property
+	_, hasCommand := entity.GetProperty("command")
+	_, hasFunction := entity.GetProperty("function")
 
-	if name == "" {
-		return fmt.Errorf("task name cannot be empty")
+	if !hasCommand && !hasFunction {
+		return fmt.Errorf("tool entity must have either 'command' or 'function' property")
 	}
 
-	// Valid task properties: instruction, schedule, priority
-	validProperties := []string{"instruction", "schedule", "priority"}
-	isValid := false
-	for _, valid := range validProperties {
-		if property == valid {
-			isValid = true
-			break
-		}
+	return nil
+}
+
+// validateIntentEntity validates an intent entity
+func (v *Validator) validateIntentEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("intent entity must have a name")
 	}
 
-	if !isValid {
-		return fmt.Errorf("invalid task property: %s (must be 'instruction', 'schedule', or 'priority')", property)
+	// Intent must have a 'use' property referencing an agent
+	_, hasUse := entity.GetProperty("use")
+	if !hasUse {
+		return fmt.Errorf("intent entity must have 'use' property referencing an agent")
+	}
+
+	return nil
+}
+
+// validatePipelineEntity validates a pipeline entity
+func (v *Validator) validatePipelineEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("pipeline entity must have a name")
+	}
+
+	return nil
+}
+
+// validateStepEntity validates a step entity
+func (v *Validator) validateStepEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("step entity must have a name")
+	}
+
+	// Step must have a 'use' property
+	_, hasUse := entity.GetProperty("use")
+	if !hasUse {
+		return fmt.Errorf("step entity must have 'use' property")
+	}
+
+	return nil
+}
+
+// validateTriggerEntity validates a trigger entity
+func (v *Validator) validateTriggerEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("trigger entity must have a name")
+	}
+
+	// Trigger should have event or schedule property
+	_, hasEvent := entity.GetProperty("event")
+	_, hasSchedule := entity.GetProperty("schedule")
+
+	if !hasEvent && !hasSchedule {
+		return fmt.Errorf("trigger entity must have 'event' or 'schedule' property")
+	}
+
+	return nil
+}
+
+// validateConfigEntity validates a config entity
+func (v *Validator) validateConfigEntity(entity ast.Entity) error {
+	// Config entities don't require a name
+	// They should have at least one property
+	if len(entity.Properties()) == 0 {
+		return fmt.Errorf("config entity must have at least one property")
+	}
+
+	return nil
+}
+
+// validateMCPEntity validates an MCP entity
+func (v *Validator) validateMCPEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("mcp entity must have a name")
+	}
+
+	// MCP entities should have command property
+	_, hasCommand := entity.GetProperty("command")
+	if !hasCommand {
+		return fmt.Errorf("mcp entity must have 'command' property")
 	}
 
 	return nil

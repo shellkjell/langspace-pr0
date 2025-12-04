@@ -55,7 +55,11 @@ func main() {
 	fmt.Println("  Number of entities: ", data.TotalEntities)
 	fmt.Println("  Number of file entities: ", data.FileEntities)
 	fmt.Println("  Number of agent entities: ", data.AgentEntities)
-	fmt.Println("  Number of task entities: ", data.TaskEntities)
+	fmt.Println("  Number of tool entities: ", data.ToolEntities)
+	fmt.Println("  Number of intent entities: ", data.IntentEntities)
+	fmt.Println("  Number of pipeline entities: ", data.PipelineEntities)
+	fmt.Println("  Number of relationships: ", data.TotalRelationships)
+	fmt.Println("  Number of hooks: ", data.TotalHooks)
 
 	fmt.Println("Successfully processed amount of entities: ", len(entities))
 }
