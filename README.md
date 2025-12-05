@@ -146,7 +146,7 @@ agent "file-manager" {
 
 Scripts enable code-first agent actions — a more efficient alternative to multiple tool calls. Instead of loading full data into the context window through repeated tool invocations, agents write executable code that performs complex operations in a single execution.
 
-```langspace
+````langspace
 # Define a reusable script template
 script "db-update" {
   language: "python"
@@ -186,7 +186,7 @@ agent "efficient-data-manager" {
 
   scripts: [script("db-update")]
 }
-```
+````
 
 **Why Scripts over Tools?**
 
