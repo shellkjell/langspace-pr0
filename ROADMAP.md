@@ -76,7 +76,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Add workspace persistence (SaveTo/LoadFrom, SaveToFile/LoadFromFile)
 - [x] Implement workspace snapshots (CreateSnapshot, RestoreSnapshot, SnapshotStore)
 - [x] Add entity search/query capabilities
-- [ ] Support workspace configuration
+- [x] Support workspace configuration (Config, WithConfig, limits, constraints)
 - [x] Add workspace events
 
 ### 5. Architecture Improvements
@@ -96,11 +96,11 @@ This document outlines the planned development roadmap for the LangSpace project
 ## Medium-term Goals (v0.3.0)
 
 ### 1. Advanced Features
-- [ ] Entity dependency tracking
-- [ ] Concurrent entity processing
-- [ ] Entity lifecycle hooks
-- [ ] Custom entity validators
-- [ ] Entity transformation pipeline
+- [x] Entity dependency tracking
+- [x] Concurrent entity processing
+- [x] Entity lifecycle hooks
+- [x] Custom entity validators
+- [x] Entity transformation pipeline
 
 ### 2. Developer Experience
 - [ ] CLI tools for entity management

@@ -98,6 +98,41 @@ func entityKey(entityType, entityName string) string {
 	return entityType + ":" + entityName
 }
 
+// Config holds workspace configuration options.
+type Config struct {
+	// MaxEntities limits the maximum number of entities (0 = unlimited)
+	MaxEntities int `json:"max_entities,omitempty"`
+	// MaxRelationships limits the maximum number of relationships (0 = unlimited)
+	MaxRelationships int `json:"max_relationships,omitempty"`
+	// MaxVersions limits the number of versions kept per entity (0 = unlimited)
+	MaxVersions int `json:"max_versions,omitempty"`
+	// AllowDuplicateNames allows entities of the same type with duplicate names
+	AllowDuplicateNames bool `json:"allow_duplicate_names,omitempty"`
+	// StrictValidation requires all entities to pass validation
+	StrictValidation bool `json:"strict_validation,omitempty"`
+	// EnableVersioning enables entity version tracking
+	EnableVersioning bool `json:"enable_versioning,omitempty"`
+	// AllowedEntityTypes restricts which entity types can be added (empty = all allowed)
+	AllowedEntityTypes []string `json:"allowed_entity_types,omitempty"`
+}
+
+// DefaultConfig returns a Config with sensible defaults.
+func DefaultConfig() *Config {
+	return &Config{
+		MaxEntities:         0,     // unlimited
+		MaxRelationships:    0,     // unlimited
+		MaxVersions:         100,   // keep last 100 versions
+		AllowDuplicateNames: false, // no duplicates
+		StrictValidation:    true,  // require validation
+		EnableVersioning:    false, // disabled by default
+		AllowedEntityTypes:  nil,   // all types allowed
+	}
+}
+
+// EntityValidatorFunc is a function that validates an entity.
+// It returns an error if the entity is invalid.
+type EntityValidatorFunc func(entity ast.Entity) error
+
 // Workspace represents a virtual workspace containing entities
 type Workspace struct {
 	entities          []ast.Entity
@@ -106,6 +141,8 @@ type Workspace struct {
 	eventHandlers     []EventHandler
 	entityVersions    map[string][]EntityVersion // Maps entity key to version history
 	versioningEnabled bool
+	config            *Config
+	customValidators  map[string][]EntityValidatorFunc // Maps entity type to validators
 	mu                sync.RWMutex
 	validator         validator.EntityValidator
 }
@@ -119,6 +156,8 @@ func New() *Workspace {
 		eventHandlers:     make([]EventHandler, 0),
 		entityVersions:    make(map[string][]EntityVersion),
 		versioningEnabled: false,
+		config:            DefaultConfig(),
+		customValidators:  make(map[string][]EntityValidatorFunc),
 	}
 }
 
@@ -180,6 +219,92 @@ func (w *Workspace) WithValidator(v validator.EntityValidator) *Workspace {
 	return w
 }
 
+// RegisterEntityValidator registers a custom validator for a specific entity type.
+// Multiple validators can be registered for the same type; they will all be executed.
+// Validators are run during AddEntity, UpdateEntity, and UpsertEntity operations.
+func (w *Workspace) RegisterEntityValidator(entityType string, validator EntityValidatorFunc) *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.customValidators == nil {
+		w.customValidators = make(map[string][]EntityValidatorFunc)
+	}
+	w.customValidators[entityType] = append(w.customValidators[entityType], validator)
+	return w
+}
+
+// RegisterGlobalValidator registers a validator that applies to all entity types.
+// This is registered under the special type "*".
+func (w *Workspace) RegisterGlobalValidator(validator EntityValidatorFunc) *Workspace {
+	return w.RegisterEntityValidator("*", validator)
+}
+
+// runCustomValidators runs all custom validators for an entity.
+// Returns the first error encountered, or nil if all pass.
+func (w *Workspace) runCustomValidators(entity ast.Entity) error {
+	// Run global validators first
+	globalValidators := w.customValidators["*"]
+	for _, v := range globalValidators {
+		if err := v(entity); err != nil {
+			return err
+		}
+	}
+
+	// Run type-specific validators
+	typeValidators := w.customValidators[entity.Type()]
+	for _, v := range typeValidators {
+		if err := v(entity); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ClearValidators removes all custom validators.
+func (w *Workspace) ClearValidators() *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.customValidators = make(map[string][]EntityValidatorFunc)
+	return w
+}
+
+// ClearValidatorsForType removes custom validators for a specific entity type.
+func (w *Workspace) ClearValidatorsForType(entityType string) *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	delete(w.customValidators, entityType)
+	return w
+}
+
+// WithConfig applies a configuration to the workspace.
+// This should be called before adding entities.
+func (w *Workspace) WithConfig(cfg *Config) *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if cfg != nil {
+		w.config = cfg
+		w.versioningEnabled = cfg.EnableVersioning
+	}
+	return w
+}
+
+// GetConfig returns a copy of the current workspace configuration.
+func (w *Workspace) GetConfig() Config {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.config == nil {
+		return *DefaultConfig()
+	}
+	// Return a copy
+	cfg := *w.config
+	if w.config.AllowedEntityTypes != nil {
+		cfg.AllowedEntityTypes = make([]string, len(w.config.AllowedEntityTypes))
+		copy(cfg.AllowedEntityTypes, w.config.AllowedEntityTypes)
+	}
+	return cfg
+}
+
 // WithVersioning enables entity version tracking.
 // When enabled, the workspace maintains a history of all entity versions,
 // allowing you to retrieve previous states of entities.
@@ -187,6 +312,7 @@ func (w *Workspace) WithVersioning() *Workspace {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.versioningEnabled = true
+	w.config.EnableVersioning = true
 	return w
 }
 
@@ -203,7 +329,19 @@ func (w *Workspace) recordVersion(entity ast.Entity) {
 		Entity:    entity,
 		Timestamp: time.Now().Unix(),
 	}
-	w.entityVersions[key] = append(versions, newVersion)
+	versions = append(versions, newVersion)
+
+	// Trim versions if MaxVersions is set
+	if w.config != nil && w.config.MaxVersions > 0 && len(versions) > w.config.MaxVersions {
+		// Keep only the most recent MaxVersions versions
+		versions = versions[len(versions)-w.config.MaxVersions:]
+		// Renumber versions
+		for i := range versions {
+			versions[i].Version = i + 1
+		}
+	}
+
+	w.entityVersions[key] = versions
 }
 
 // GetEntityVersion returns a specific version of an entity.
@@ -293,6 +431,11 @@ func (w *Workspace) AddEntity(entity ast.Entity) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	// Check configuration constraints
+	if err := w.checkAddConstraints(entity); err != nil {
+		return err
+	}
+
 	// Run before-add hooks
 	if err := w.runHooks(HookBeforeAdd, entity); err != nil {
 		return err
@@ -302,6 +445,11 @@ func (w *Workspace) AddEntity(entity ast.Entity) error {
 		if err := w.validator.ValidateEntity(entity); err != nil {
 			return fmt.Errorf("validation failed: %w", err)
 		}
+	}
+
+	// Run custom validators
+	if err := w.runCustomValidators(entity); err != nil {
+		return fmt.Errorf("custom validation failed: %w", err)
 	}
 
 	w.entities = append(w.entities, entity)
@@ -314,6 +462,44 @@ func (w *Workspace) AddEntity(entity ast.Entity) error {
 
 	// Emit entity added event
 	w.emit(Event{Type: EventEntityAdded, Entity: entity})
+
+	return nil
+}
+
+// checkAddConstraints checks if adding an entity violates configuration constraints.
+// Must be called with lock held.
+func (w *Workspace) checkAddConstraints(entity ast.Entity) error {
+	if w.config == nil {
+		return nil
+	}
+
+	// Check max entities limit
+	if w.config.MaxEntities > 0 && len(w.entities) >= w.config.MaxEntities {
+		return fmt.Errorf("maximum entity limit reached (%d)", w.config.MaxEntities)
+	}
+
+	// Check allowed entity types
+	if len(w.config.AllowedEntityTypes) > 0 {
+		allowed := false
+		for _, t := range w.config.AllowedEntityTypes {
+			if t == entity.Type() {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("entity type %q is not allowed", entity.Type())
+		}
+	}
+
+	// Check for duplicate names (unless explicitly allowed)
+	if !w.config.AllowDuplicateNames {
+		for _, e := range w.entities {
+			if e.Type() == entity.Type() && e.Name() == entity.Name() {
+				return fmt.Errorf("entity %s/%s already exists", entity.Type(), entity.Name())
+			}
+		}
+	}
 
 	return nil
 }
@@ -411,6 +597,11 @@ func (w *Workspace) UpdateEntity(entity ast.Entity) error {
 		}
 	}
 
+	// Run custom validators
+	if err := w.runCustomValidators(entity); err != nil {
+		return fmt.Errorf("custom validation failed: %w", err)
+	}
+
 	// Replace the entity
 	w.entities[idx] = entity
 
@@ -453,6 +644,11 @@ func (w *Workspace) UpsertEntity(entity ast.Entity) error {
 			}
 		}
 
+		// Run custom validators
+		if err := w.runCustomValidators(entity); err != nil {
+			return fmt.Errorf("custom validation failed: %w", err)
+		}
+
 		w.entities[idx] = entity
 		w.recordVersion(entity)
 		_ = w.runHooks(HookAfterUpdate, entity)
@@ -469,6 +665,11 @@ func (w *Workspace) UpsertEntity(entity ast.Entity) error {
 			}
 		}
 
+		// Run custom validators
+		if err := w.runCustomValidators(entity); err != nil {
+			return fmt.Errorf("custom validation failed: %w", err)
+		}
+
 		w.entities = append(w.entities, entity)
 		w.recordVersion(entity)
 		_ = w.runHooks(HookAfterAdd, entity)
@@ -476,6 +677,337 @@ func (w *Workspace) UpsertEntity(entity ast.Entity) error {
 	}
 
 	return nil
+}
+
+// ProcessResult represents the result of processing a single entity.
+type ProcessResult struct {
+	Entity ast.Entity // The entity that was processed
+	Error  error      // Any error that occurred during processing
+}
+
+// EntityProcessor is a function that processes an entity and returns a result.
+type EntityProcessor func(entity ast.Entity) error
+
+// EntityTransformer is a function that transforms an entity into a new entity.
+type EntityTransformer func(entity ast.Entity) (ast.Entity, error)
+
+// EntityPredicate is a function that tests an entity and returns true/false.
+type EntityPredicate func(entity ast.Entity) bool
+
+// PipelineStage represents a single stage in a transformation pipeline.
+type PipelineStage struct {
+	Name        string            // Name of the stage for debugging/logging
+	Predicate   EntityPredicate   // Optional: only process entities matching this predicate
+	Transformer EntityTransformer // The transformation to apply
+}
+
+// Pipeline represents a series of transformation stages.
+type Pipeline struct {
+	Name   string          // Name of the pipeline
+	Stages []PipelineStage // The stages to execute in order
+}
+
+// NewPipeline creates a new transformation pipeline.
+func NewPipeline(name string) *Pipeline {
+	return &Pipeline{
+		Name:   name,
+		Stages: make([]PipelineStage, 0),
+	}
+}
+
+// AddStage adds a transformation stage to the pipeline.
+func (p *Pipeline) AddStage(name string, transformer EntityTransformer) *Pipeline {
+	p.Stages = append(p.Stages, PipelineStage{
+		Name:        name,
+		Transformer: transformer,
+	})
+	return p
+}
+
+// AddConditionalStage adds a stage that only applies to entities matching the predicate.
+func (p *Pipeline) AddConditionalStage(name string, predicate EntityPredicate, transformer EntityTransformer) *Pipeline {
+	p.Stages = append(p.Stages, PipelineStage{
+		Name:        name,
+		Predicate:   predicate,
+		Transformer: transformer,
+	})
+	return p
+}
+
+// PipelineResult represents the result of running an entity through a pipeline.
+type PipelineResult struct {
+	OriginalEntity  ast.Entity // The original entity before transformation
+	ResultEntity    ast.Entity // The resulting entity after all stages
+	StagesExecuted  []string   // Names of stages that were executed
+	StagesSkipped   []string   // Names of stages that were skipped (predicate failed)
+	Error           error      // First error encountered, if any
+	FailedStageName string     // Name of the stage that failed, if any
+}
+
+// Execute runs a single entity through the pipeline.
+func (p *Pipeline) Execute(entity ast.Entity) PipelineResult {
+	result := PipelineResult{
+		OriginalEntity: entity,
+		ResultEntity:   entity,
+		StagesExecuted: make([]string, 0),
+		StagesSkipped:  make([]string, 0),
+	}
+
+	current := entity
+	for _, stage := range p.Stages {
+		// Check predicate if present
+		if stage.Predicate != nil && !stage.Predicate(current) {
+			result.StagesSkipped = append(result.StagesSkipped, stage.Name)
+			continue
+		}
+
+		// Execute transformation
+		transformed, err := stage.Transformer(current)
+		if err != nil {
+			result.Error = err
+			result.FailedStageName = stage.Name
+			return result
+		}
+
+		result.StagesExecuted = append(result.StagesExecuted, stage.Name)
+		current = transformed
+	}
+
+	result.ResultEntity = current
+	return result
+}
+
+// ExecuteAll runs multiple entities through the pipeline.
+func (p *Pipeline) ExecuteAll(entities []ast.Entity) []PipelineResult {
+	results := make([]PipelineResult, len(entities))
+	for i, entity := range entities {
+		results[i] = p.Execute(entity)
+	}
+	return results
+}
+
+// ExecutePipeline executes a pipeline on matching entities in the workspace.
+// Returns the results for each processed entity.
+func (w *Workspace) ExecutePipeline(pipeline *Pipeline, predicate EntityPredicate) []PipelineResult {
+	w.mu.RLock()
+	var entities []ast.Entity
+	for _, e := range w.entities {
+		if predicate == nil || predicate(e) {
+			entities = append(entities, e)
+		}
+	}
+	w.mu.RUnlock()
+
+	return pipeline.ExecuteAll(entities)
+}
+
+// ExecutePipelineAndUpdate executes a pipeline and updates matching entities in the workspace.
+// Only successfully transformed entities are updated.
+func (w *Workspace) ExecutePipelineAndUpdate(pipeline *Pipeline, predicate EntityPredicate) ([]PipelineResult, error) {
+	results := w.ExecutePipeline(pipeline, predicate)
+
+	var updateErrors []error
+	for _, result := range results {
+		if result.Error != nil {
+			continue // Skip failed transformations
+		}
+
+		if result.ResultEntity != nil && result.ResultEntity != result.OriginalEntity {
+			if err := w.UpdateEntity(result.ResultEntity); err != nil {
+				updateErrors = append(updateErrors, err)
+			}
+		}
+	}
+
+	if len(updateErrors) > 0 {
+		return results, fmt.Errorf("failed to update %d entities", len(updateErrors))
+	}
+
+	return results, nil
+}
+
+// ProcessEntitiesConcurrently processes entities concurrently with the given processor.
+// It returns a slice of results for each entity processed.
+// The maxConcurrency parameter limits the number of concurrent operations (0 = no limit).
+func (w *Workspace) ProcessEntitiesConcurrently(entities []ast.Entity, processor EntityProcessor, maxConcurrency int) []ProcessResult {
+	if len(entities) == 0 {
+		return nil
+	}
+
+	results := make([]ProcessResult, len(entities))
+
+	// Default to unlimited concurrency if not specified
+	if maxConcurrency <= 0 {
+		maxConcurrency = len(entities)
+	}
+
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for i, entity := range entities {
+		wg.Add(1)
+		go func(idx int, e ast.Entity) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
+
+			err := processor(e)
+			results[idx] = ProcessResult{Entity: e, Error: err}
+		}(i, entity)
+	}
+
+	wg.Wait()
+	return results
+}
+
+// AddEntitiesBatch adds multiple entities concurrently.
+// Returns a slice of results indicating success or failure for each entity.
+// The maxConcurrency parameter limits the number of concurrent add operations.
+func (w *Workspace) AddEntitiesBatch(entities []ast.Entity, maxConcurrency int) []ProcessResult {
+	return w.ProcessEntitiesConcurrently(entities, func(entity ast.Entity) error {
+		return w.AddEntity(entity)
+	}, maxConcurrency)
+}
+
+// UpdateEntitiesBatch updates multiple entities concurrently.
+// Returns a slice of results indicating success or failure for each entity.
+func (w *Workspace) UpdateEntitiesBatch(entities []ast.Entity, maxConcurrency int) []ProcessResult {
+	return w.ProcessEntitiesConcurrently(entities, func(entity ast.Entity) error {
+		return w.UpdateEntity(entity)
+	}, maxConcurrency)
+}
+
+// UpsertEntitiesBatch upserts multiple entities concurrently.
+// Returns a slice of results indicating success or failure for each entity.
+func (w *Workspace) UpsertEntitiesBatch(entities []ast.Entity, maxConcurrency int) []ProcessResult {
+	return w.ProcessEntitiesConcurrently(entities, func(entity ast.Entity) error {
+		return w.UpsertEntity(entity)
+	}, maxConcurrency)
+}
+
+// TransformEntities applies a transformation to all entities matching the predicate.
+// The transformation runs concurrently with the specified concurrency limit.
+// Returns the transformed entities and any errors that occurred.
+func (w *Workspace) TransformEntities(predicate EntityPredicate, transformer EntityTransformer, maxConcurrency int) ([]ast.Entity, []error) {
+	w.mu.RLock()
+	// Find entities matching predicate
+	var toTransform []ast.Entity
+	for _, entity := range w.entities {
+		if predicate(entity) {
+			toTransform = append(toTransform, entity)
+		}
+	}
+	w.mu.RUnlock()
+
+	if len(toTransform) == 0 {
+		return nil, nil
+	}
+
+	if maxConcurrency <= 0 {
+		maxConcurrency = len(toTransform)
+	}
+
+	transformed := make([]ast.Entity, len(toTransform))
+	errors := make([]error, len(toTransform))
+
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for i, entity := range toTransform {
+		wg.Add(1)
+		go func(idx int, e ast.Entity) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			result, err := transformer(e)
+			transformed[idx] = result
+			errors[idx] = err
+		}(i, entity)
+	}
+
+	wg.Wait()
+
+	// Filter out nil results and collect only non-nil errors
+	var validResults []ast.Entity
+	var actualErrors []error
+	for i, t := range transformed {
+		if t != nil {
+			validResults = append(validResults, t)
+		}
+		if errors[i] != nil {
+			actualErrors = append(actualErrors, errors[i])
+		}
+	}
+
+	return validResults, actualErrors
+}
+
+// FilterEntitiesConcurrently filters entities using a predicate, processed concurrently.
+// This is useful when the predicate is expensive to compute.
+func (w *Workspace) FilterEntitiesConcurrently(predicate EntityPredicate, maxConcurrency int) []ast.Entity {
+	w.mu.RLock()
+	entities := make([]ast.Entity, len(w.entities))
+	copy(entities, w.entities)
+	w.mu.RUnlock()
+
+	if len(entities) == 0 {
+		return nil
+	}
+
+	if maxConcurrency <= 0 {
+		maxConcurrency = len(entities)
+	}
+
+	matches := make([]bool, len(entities))
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for i, entity := range entities {
+		wg.Add(1)
+		go func(idx int, e ast.Entity) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			matches[idx] = predicate(e)
+		}(i, entity)
+	}
+
+	wg.Wait()
+
+	var result []ast.Entity
+	for i, match := range matches {
+		if match {
+			result = append(result, entities[i])
+		}
+	}
+
+	return result
+}
+
+// ForEachEntity executes a function for each entity concurrently.
+// Unlike ProcessEntitiesConcurrently, this operates on the workspace's own entities.
+func (w *Workspace) ForEachEntity(fn EntityProcessor, maxConcurrency int) []ProcessResult {
+	w.mu.RLock()
+	entities := make([]ast.Entity, len(w.entities))
+	copy(entities, w.entities)
+	w.mu.RUnlock()
+
+	return w.ProcessEntitiesConcurrently(entities, fn, maxConcurrency)
+}
+
+// ForEachEntityOfType executes a function for each entity of a specific type concurrently.
+func (w *Workspace) ForEachEntityOfType(entityType string, fn EntityProcessor, maxConcurrency int) []ProcessResult {
+	w.mu.RLock()
+	var entities []ast.Entity
+	for _, e := range w.entities {
+		if e.Type() == entityType {
+			entities = append(entities, e)
+		}
+	}
+	w.mu.RUnlock()
+
+	return w.ProcessEntitiesConcurrently(entities, fn, maxConcurrency)
 }
 
 // removeRelationshipsForEntity removes all relationships involving the specified entity
@@ -503,6 +1035,11 @@ func (w *Workspace) Clear() {
 func (w *Workspace) AddRelationship(sourceType, sourceName, targetType, targetName string, relType RelationType) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// Check max relationships limit
+	if w.config != nil && w.config.MaxRelationships > 0 && len(w.relationships) >= w.config.MaxRelationships {
+		return fmt.Errorf("maximum relationship limit reached (%d)", w.config.MaxRelationships)
+	}
 
 	// Validate that source entity exists
 	sourceExists := slices.Any(w.entities, func(e ast.Entity) bool {
@@ -1010,4 +1547,246 @@ func (ss *SnapshotStore) Count() int {
 	ss.mu.RLock()
 	defer ss.mu.RUnlock()
 	return len(ss.snapshots)
+}
+
+// DependencyGraph represents a graph of entity dependencies.
+// It tracks which entities depend on other entities.
+type DependencyGraph struct {
+	// dependencies maps entity key -> list of entity keys it depends on
+	dependencies map[string][]string
+	mu           sync.RWMutex
+}
+
+// NewDependencyGraph creates a new dependency graph.
+func NewDependencyGraph() *DependencyGraph {
+	return &DependencyGraph{
+		dependencies: make(map[string][]string),
+	}
+}
+
+// AddDependency adds a dependency from one entity to another.
+// Returns an error if this would create a circular dependency.
+func (dg *DependencyGraph) AddDependency(fromType, fromName, toType, toName string) error {
+	dg.mu.Lock()
+	defer dg.mu.Unlock()
+
+	fromKey := entityKey(fromType, fromName)
+	toKey := entityKey(toType, toName)
+
+	// Check for circular dependency before adding
+	if dg.wouldCreateCycle(fromKey, toKey) {
+		return fmt.Errorf("circular dependency detected: %s -> %s", fromKey, toKey)
+	}
+
+	// Check if dependency already exists
+	for _, dep := range dg.dependencies[fromKey] {
+		if dep == toKey {
+			return nil // Already exists
+		}
+	}
+
+	dg.dependencies[fromKey] = append(dg.dependencies[fromKey], toKey)
+	return nil
+}
+
+// wouldCreateCycle checks if adding a dependency from -> to would create a cycle.
+// Must be called with lock held.
+func (dg *DependencyGraph) wouldCreateCycle(from, to string) bool {
+	// If to already depends on from (directly or transitively), adding from -> to creates a cycle
+	visited := make(map[string]bool)
+	return dg.hasPath(to, from, visited)
+}
+
+// hasPath checks if there's a path from start to end in the dependency graph.
+// Must be called with lock held.
+func (dg *DependencyGraph) hasPath(start, end string, visited map[string]bool) bool {
+	if start == end {
+		return true
+	}
+	if visited[start] {
+		return false
+	}
+	visited[start] = true
+
+	for _, dep := range dg.dependencies[start] {
+		if dg.hasPath(dep, end, visited) {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveDependency removes a dependency.
+func (dg *DependencyGraph) RemoveDependency(fromType, fromName, toType, toName string) {
+	dg.mu.Lock()
+	defer dg.mu.Unlock()
+
+	fromKey := entityKey(fromType, fromName)
+	toKey := entityKey(toType, toName)
+
+	deps := dg.dependencies[fromKey]
+	for i, dep := range deps {
+		if dep == toKey {
+			dg.dependencies[fromKey] = append(deps[:i], deps[i+1:]...)
+			break
+		}
+	}
+}
+
+// RemoveEntity removes all dependencies involving an entity.
+func (dg *DependencyGraph) RemoveEntity(entityType, entityName string) {
+	dg.mu.Lock()
+	defer dg.mu.Unlock()
+
+	key := entityKey(entityType, entityName)
+
+	// Remove as a source
+	delete(dg.dependencies, key)
+
+	// Remove as a target
+	for from, deps := range dg.dependencies {
+		filtered := make([]string, 0, len(deps))
+		for _, dep := range deps {
+			if dep != key {
+				filtered = append(filtered, dep)
+			}
+		}
+		dg.dependencies[from] = filtered
+	}
+}
+
+// GetDependencies returns all entities that the specified entity depends on.
+func (dg *DependencyGraph) GetDependencies(entityType, entityName string) []string {
+	dg.mu.RLock()
+	defer dg.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	deps := dg.dependencies[key]
+	result := make([]string, len(deps))
+	copy(result, deps)
+	return result
+}
+
+// GetDependents returns all entities that depend on the specified entity.
+func (dg *DependencyGraph) GetDependents(entityType, entityName string) []string {
+	dg.mu.RLock()
+	defer dg.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	var result []string
+
+	for from, deps := range dg.dependencies {
+		for _, dep := range deps {
+			if dep == key {
+				result = append(result, from)
+				break
+			}
+		}
+	}
+	return result
+}
+
+// GetTransitiveDependencies returns all entities that the specified entity
+// depends on, directly or transitively.
+func (dg *DependencyGraph) GetTransitiveDependencies(entityType, entityName string) []string {
+	dg.mu.RLock()
+	defer dg.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	visited := make(map[string]bool)
+	var result []string
+
+	dg.collectTransitive(key, visited, &result)
+	return result
+}
+
+// collectTransitive recursively collects all transitive dependencies.
+// Must be called with lock held.
+func (dg *DependencyGraph) collectTransitive(key string, visited map[string]bool, result *[]string) {
+	for _, dep := range dg.dependencies[key] {
+		if !visited[dep] {
+			visited[dep] = true
+			*result = append(*result, dep)
+			dg.collectTransitive(dep, visited, result)
+		}
+	}
+}
+
+// TopologicalSort returns entities in topological order (dependencies first).
+// Returns an error if there's a cycle in the graph.
+func (dg *DependencyGraph) TopologicalSort() ([]string, error) {
+	dg.mu.RLock()
+	defer dg.mu.RUnlock()
+
+	// Collect all entities
+	entities := make(map[string]bool)
+	for from := range dg.dependencies {
+		entities[from] = true
+		for _, to := range dg.dependencies[from] {
+			entities[to] = true
+		}
+	}
+
+	// Build reverse adjacency (who depends on each entity)
+	dependents := make(map[string][]string)
+	for from, deps := range dg.dependencies {
+		for _, dep := range deps {
+			dependents[dep] = append(dependents[dep], from)
+		}
+	}
+
+	// Kahn's algorithm - count how many dependencies each entity has
+	inDegree := make(map[string]int)
+	for e := range entities {
+		inDegree[e] = len(dg.dependencies[e])
+	}
+
+	// Start with entities that have no dependencies (leaf nodes)
+	var queue []string
+	for e, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, e)
+		}
+	}
+
+	var result []string
+	for len(queue) > 0 {
+		// Pop from queue
+		current := queue[0]
+		queue = queue[1:]
+		result = append(result, current)
+
+		// Decrement in-degree for entities that depend on current
+		for _, dependent := range dependents[current] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
+			}
+		}
+	}
+
+	if len(result) != len(entities) {
+		return nil, fmt.Errorf("cycle detected in dependency graph")
+	}
+
+	return result, nil
+}
+
+// Clear removes all dependencies.
+func (dg *DependencyGraph) Clear() {
+	dg.mu.Lock()
+	defer dg.mu.Unlock()
+	dg.dependencies = make(map[string][]string)
+}
+
+// Count returns the total number of dependencies.
+func (dg *DependencyGraph) Count() int {
+	dg.mu.RLock()
+	defer dg.mu.RUnlock()
+
+	count := 0
+	for _, deps := range dg.dependencies {
+		count += len(deps)
+	}
+	return count
 }

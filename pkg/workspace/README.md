@@ -8,6 +8,7 @@ A workspace is responsible for:
 - Entity storage and retrieval
 - Entity relationship management
 - Event hooks for validation and notification
+- Configuration-based limits and constraints
 - Operation execution
 - State management
 
@@ -51,6 +52,91 @@ fmt.Printf("Total: %d, Files: %d, Agents: %d, Tools: %d, Relationships: %d, Hook
     stats.TotalEntities, stats.FileEntities, stats.AgentEntities,
     stats.ToolEntities, stats.TotalRelationships, stats.TotalHooks)
 ```
+
+## Workspace Configuration
+
+Configure workspace behavior with limits and constraints:
+
+```go
+// Create a custom configuration
+cfg := &workspace.Config{
+    MaxEntities:         100,              // Limit total entities
+    MaxRelationships:    500,              // Limit total relationships
+    MaxVersions:         10,               // Keep last 10 versions per entity
+    AllowDuplicateNames: false,            // Prevent duplicate entity names
+    StrictValidation:    true,             // Require validation
+    EnableVersioning:    true,             // Enable version tracking
+    AllowedEntityTypes:  []string{"file", "agent", "tool"}, // Restrict entity types
+}
+
+ws := workspace.New().WithConfig(cfg)
+
+// Get current configuration
+currentCfg := ws.GetConfig()
+
+// Use defaults
+ws := workspace.New() // Uses DefaultConfig()
+```
+
+### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `MaxEntities` | 0 (unlimited) | Maximum number of entities |
+| `MaxRelationships` | 0 (unlimited) | Maximum number of relationships |
+| `MaxVersions` | 100 | Maximum versions kept per entity |
+| `AllowDuplicateNames` | false | Allow entities with same type and name |
+| `StrictValidation` | true | Require all entities to pass validation |
+| `EnableVersioning` | false | Enable entity version tracking |
+| `AllowedEntityTypes` | nil (all) | Restrict which entity types can be added |
+
+## Custom Entity Validators
+
+Register custom validation functions for specific entity types or globally:
+
+```go
+// Register a type-specific validator for file entities
+ws.RegisterEntityValidator("file", func(e ast.Entity) error {
+    name := e.Name()
+    if !strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, ".ls") {
+        return fmt.Errorf("only .go and .ls files are allowed")
+    }
+    return nil
+})
+
+// Register another validator for the same type (both will run)
+ws.RegisterEntityValidator("file", func(e ast.Entity) error {
+    if strings.HasPrefix(e.Name(), ".") {
+        return fmt.Errorf("hidden files not allowed")
+    }
+    return nil
+})
+
+// Register a global validator that applies to all entity types
+ws.RegisterGlobalValidator(func(e ast.Entity) error {
+    if len(e.Name()) < 2 {
+        return fmt.Errorf("entity name must be at least 2 characters")
+    }
+    return nil
+})
+
+// Validators run during AddEntity, UpdateEntity, and UpsertEntity
+file, _ := ast.NewEntity("file", "test.txt")
+err := ws.AddEntity(file)
+// err: "custom validation failed: only .go and .ls files are allowed"
+
+// Clear all validators
+ws.ClearValidators()
+
+// Clear validators for a specific type
+ws.ClearValidatorsForType("file")
+```
+
+Validators are executed in the following order:
+1. Global validators (registered with `RegisterGlobalValidator`)
+2. Type-specific validators (registered with `RegisterEntityValidator`)
+
+Both global and type-specific validators must pass for an entity to be accepted.
 
 ## Entity Hooks
 
@@ -253,6 +339,211 @@ fmt.Printf("Available snapshots: %v\n", ids)
 store.Delete("before-refactor")
 ```
 
+## Dependency Graph
+
+The `DependencyGraph` tracks dependencies between entities and supports topological sorting and cycle detection:
+
+```go
+// Create a new dependency graph
+dg := workspace.NewDependencyGraph()
+
+// Add dependencies (entity A depends on entity B)
+err := dg.AddDependency("file", "main.go", "file", "utils.go")
+if err != nil {
+    // Error if adding this would create a circular dependency
+    log.Printf("Circular dependency detected: %v", err)
+}
+
+// Check direct dependencies
+deps := dg.GetDependencies("file", "main.go")  // Returns ["file:utils.go"]
+
+// Check what depends on an entity (reverse lookup)
+dependents := dg.GetDependents("file", "utils.go")  // Returns ["file:main.go"]
+
+// Get all transitive dependencies
+transitive := dg.GetTransitiveDependencies("file", "main.go")
+
+// Topological sort - dependencies first
+sorted, err := dg.TopologicalSort()
+if err != nil {
+    log.Printf("Cycle in graph: %v", err)
+}
+// sorted: ["file:utils.go", "file:main.go"] - dependencies come before dependents
+
+// Remove a specific dependency
+dg.RemoveDependency("file", "main.go", "file", "utils.go")
+
+// Remove an entity and all its dependencies
+dg.RemoveEntity("file", "utils.go")
+
+// Get dependency count
+count := dg.Count()
+
+// Clear all dependencies
+dg.Clear()
+```
+
+### Circular Dependency Detection
+
+The graph automatically prevents circular dependencies:
+
+```go
+dg := workspace.NewDependencyGraph()
+
+// A depends on B
+dg.AddDependency("file", "a", "file", "b")  // OK
+
+// B depends on C
+dg.AddDependency("file", "b", "file", "c")  // OK
+
+// C depends on A would create a cycle: A -> B -> C -> A
+err := dg.AddDependency("file", "c", "file", "a")
+// err: "adding this dependency would create a cycle"
+
+// Self-references are also detected
+err = dg.AddDependency("file", "x", "file", "x")
+// err: "adding this dependency would create a cycle"
+```
+
+## Concurrent Entity Processing
+
+The workspace supports concurrent processing of entities for improved performance with large entity sets:
+
+```go
+// Add multiple entities concurrently (limit to 4 concurrent operations)
+entities := []ast.Entity{entity1, entity2, entity3, ...}
+results := ws.AddEntitiesBatch(entities, 4)
+
+// Check results
+for _, r := range results {
+    if r.Error != nil {
+        log.Printf("Failed to add %s: %v", r.Entity.Name(), r.Error)
+    }
+}
+
+// Update multiple entities concurrently
+results = ws.UpdateEntitiesBatch(updates, 4)
+
+// Upsert multiple entities (add or update)
+results = ws.UpsertEntitiesBatch(entities, 4)
+
+// Process entities with a custom function
+results = ws.ProcessEntitiesConcurrently(entities, func(e ast.Entity) error {
+    // Your processing logic
+    return nil
+}, 4)
+
+// Execute function for each entity in the workspace
+results = ws.ForEachEntity(func(e ast.Entity) error {
+    log.Printf("Processing: %s", e.Name())
+    return nil
+}, 4)
+
+// Execute only for specific entity type
+results = ws.ForEachEntityOfType("file", func(e ast.Entity) error {
+    // Process only file entities
+    return nil
+}, 4)
+```
+
+### Transformation and Filtering
+
+```go
+// Transform entities matching a predicate
+transformed, errors := ws.TransformEntities(
+    // Predicate: which entities to transform
+    func(e ast.Entity) bool {
+        return e.Type() == "file"
+    },
+    // Transformer: how to transform
+    func(e ast.Entity) (ast.Entity, error) {
+        newEntity, _ := ast.NewEntity(e.Type(), e.Name())
+        newEntity.SetProperty("processed", ast.BoolValue{Value: true})
+        return newEntity, nil
+    },
+    4, // Max concurrency
+)
+
+// Filter entities concurrently (useful for expensive predicates)
+filtered := ws.FilterEntitiesConcurrently(func(e ast.Entity) bool {
+    // Expensive check that benefits from parallelism
+    return expensiveCheck(e)
+}, 4)
+```
+
+### Concurrency Control
+
+All concurrent operations accept a `maxConcurrency` parameter:
+- `0` or negative: Unlimited concurrency
+- Positive value: Maximum number of concurrent operations
+
+Results are returned in the same order as input entities, regardless of processing order.
+
+## Entity Transformation Pipeline
+
+Define multi-stage transformation pipelines for processing entities:
+
+```go
+// Create a new pipeline
+pipeline := workspace.NewPipeline("file-processor")
+
+// Add transformation stages
+pipeline.AddStage("normalize-name", func(e ast.Entity) (ast.Entity, error) {
+    // Transform the entity
+    e.SetProperty("normalized", ast.BoolValue{Value: true})
+    return e, nil
+})
+
+// Add conditional stages that only apply to matching entities
+pipeline.AddConditionalStage("go-files-only",
+    func(e ast.Entity) bool {
+        return strings.HasSuffix(e.Name(), ".go")
+    },
+    func(e ast.Entity) (ast.Entity, error) {
+        e.SetProperty("is-go-file", ast.BoolValue{Value: true})
+        return e, nil
+    })
+
+// Execute on a single entity
+entity, _ := ast.NewEntity("file", "main.go")
+result := pipeline.Execute(entity)
+
+if result.Error != nil {
+    log.Printf("Failed at stage %s: %v", result.FailedStageName, result.Error)
+} else {
+    fmt.Printf("Executed: %v, Skipped: %v\n", result.StagesExecuted, result.StagesSkipped)
+}
+
+// Execute on multiple entities
+entities := []ast.Entity{entity1, entity2, entity3}
+results := pipeline.ExecuteAll(entities)
+```
+
+### Workspace Integration
+
+```go
+// Execute pipeline on workspace entities
+results := ws.ExecutePipeline(pipeline, func(e ast.Entity) bool {
+    return e.Type() == "file"  // Only process file entities
+})
+
+// Execute and automatically update entities in the workspace
+results, err := ws.ExecutePipelineAndUpdate(pipeline, nil)  // nil = all entities
+if err != nil {
+    log.Printf("Some updates failed: %v", err)
+}
+```
+
+### Pipeline Result
+
+Each `PipelineResult` contains:
+- `OriginalEntity`: The entity before transformation
+- `ResultEntity`: The entity after all stages
+- `StagesExecuted`: Names of stages that ran
+- `StagesSkipped`: Names of stages skipped (predicate failed)
+- `Error`: First error encountered (if any)
+- `FailedStageName`: Name of the stage that failed
+
 ## Features
 
 ### Entity Management
@@ -262,6 +553,25 @@ store.Delete("before-refactor")
 - Validation on addition/update
 - Upsert support (add or update)
 - Entity versioning with full history tracking
+- Custom entity validators (type-specific and global)
+
+### Concurrent Processing
+- Batch add/update/upsert operations
+- Concurrent entity processing with configurable limits
+- Parallel transformation and filtering
+- Thread-safe operations
+
+### Transformation Pipeline
+- Multi-stage transformation pipelines
+- Conditional stages with predicates
+- Automatic workspace updates
+- Detailed execution results
+
+### Dependency Tracking
+- Entity dependency graph
+- Circular dependency detection
+- Topological sorting
+- Transitive dependency resolution
 
 ### Event Hooks
 - `before_add`: Validate before entity addition (can reject)
@@ -298,6 +608,8 @@ Unlike hooks, events are notifications that cannot block operations:
 - Register hooks before adding entities
 - Use before-hooks for validation
 - Use after-hooks for logging/notification
+- Use custom validators for type-specific rules
+- Use pipelines for complex multi-step transformations
 - Handle workspace errors appropriately
 - Clean up resources when done
 - Use appropriate query methods
