@@ -75,7 +75,7 @@ LangSpace provides a **human-readable DSL** that:
 ### 1. Files — Data at Rest
 Files represent static data: configuration, prompts, context documents, or generated outputs.
 
-```langspace
+````langspace
 file "system-prompt.md" {
   contents: ```
     You are a helpful coding assistant specializing in Go.
@@ -86,12 +86,12 @@ file "system-prompt.md" {
 file "config.json" {
   path: "./config/app.json"  # Reference to external file
 }
-```
+````
 
 ### 2. Agents — Intelligent Actors
 Agents are LLM-powered entities with specific roles, instructions, and capabilities.
 
-```langspace
+````langspace
 agent "code-reviewer" {
   model: "claude-sonnet-4-20250514"
   temperature: 0.3
@@ -108,12 +108,12 @@ agent "code-reviewer" {
 
   tools: [read_file, search_codebase, run_tests]
 }
-```
+````
 
 ### 3. Tools — Agent Capabilities
 Tools extend what agents can do, connecting them to the outside world.
 
-```langspace
+````langspace
 tool "search_codebase" {
   description: "Search the codebase for patterns or symbols"
 
@@ -125,12 +125,12 @@ tool "search_codebase" {
   # Tools can be implemented inline or reference external handlers
   handler: mcp("filesystem-server")
 }
-```
+````
 
 ### 4. Intentions — Expressing Desired Outcomes
 Intentions are the heart of LangSpace. They express *what you want to happen* rather than *how to do it*.
 
-```langspace
+````langspace
 # Simple invocation
 intent "review my code" {
   use: agent("code-reviewer")
@@ -152,12 +152,12 @@ intent "improve documentation" {
 
   output: file("pkg/parser/README.md")
 }
-```
+````
 
 ### 5. Pipelines — Multi-Step Workflows
 Pipelines chain agents together, with data flowing between steps.
 
-```langspace
+````langspace
 pipeline "full-code-review" {
   # Step 1: Analyze the code
   step "analyze" {
@@ -180,12 +180,12 @@ pipeline "full-code-review" {
 
   output: step("summarize").output
 }
-```
+````
 
 ### 6. Triggers — Event-Driven Execution
 Triggers connect LangSpace workflows to real-world events.
 
-```langspace
+````langspace
 trigger "on-commit" {
   event: git.push
   filter: { branch: "main", files: "src/**/*.go" }
@@ -202,7 +202,7 @@ trigger "daily-summary" {
     input: git.commits(since: "yesterday")
   }
 }
-```
+````
 
 ### 7. Scripts — Code-First Agent Actions
 
@@ -218,7 +218,7 @@ Traditional MCP/tool-based interactions suffer from context window bloat:
 
 **The Script Solution:**
 
-```langspace
+````langspace
 script "update-record" {
   language: "python"
   runtime: "python3"
@@ -249,7 +249,7 @@ script "update-record" {
   timeout: "30s"
   max_memory: "256MB"
 }
-```
+````
 
 **Why Scripts are More Efficient:**
 
@@ -260,7 +260,7 @@ script "update-record" {
 
 **Script Features:**
 
-```langspace
+````langspace
 # Template script for agents to customize
 script "db-operation" {
   language: "python"
@@ -307,7 +307,7 @@ intent "batch-update" {
     code: $agent.output
   }
 }
-```
+````
 
 **Supported Languages:**
 
@@ -322,7 +322,7 @@ Scripts can be written in any language with a compatible runtime:
 
 Scripts run in sandboxed environments with explicit capability grants:
 
-```langspace
+````langspace
 script "safe-operation" {
   language: "python"
 
@@ -343,7 +343,7 @@ script "safe-operation" {
 
   code: file("scripts/operation.py")
 }
-```
+````
 
 ## Execution Model
 
@@ -392,7 +392,7 @@ langspace compile --target mcp workflow.ls -o mcp-server/
 
 ### Provider Configuration
 
-```langspace
+````langspace
 # Global configuration
 config {
   default_model: "claude-sonnet-4-20250514"
@@ -415,13 +415,13 @@ agent "fast-classifier" {
   model: "gpt-4o-mini"  # Use OpenAI for this one
   # ...
 }
-```
+````
 
 ### Tool Integration via MCP
 
 LangSpace natively supports the Model Context Protocol:
 
-```langspace
+````langspace
 # Connect to MCP servers
 mcp "filesystem" {
   command: "npx"
@@ -441,12 +441,12 @@ agent "data-analyst" {
     mcp("database").query,
   ]
 }
-```
+````
 
 ## Use Cases
 
 ### 1. Code Review Automation
-```langspace
+````langspace
 file "review-criteria.md" {
   contents: ```
     ## Code Review Standards
@@ -467,10 +467,10 @@ intent "review-pr" {
   input: git.diff(base: "main")
   output: github.pr_comment()
 }
-```
+````
 
 ### 2. Documentation Generation
-```langspace
+````langspace
 pipeline "generate-docs" {
   step "extract" {
     use: agent("api-extractor")
@@ -490,10 +490,10 @@ pipeline "generate-docs" {
 
   output: file("docs/api-reference.md") <- step("format").output
 }
-```
+````
 
 ### 3. Multi-Agent Debate
-```langspace
+````langspace
 agent "optimist" {
   instruction: "Always argue for the most optimistic interpretation"
 }
@@ -526,7 +526,7 @@ pipeline "debate" {
 
   output: step("synthesize").output
 }
-```
+````
 
 ## Roadmap
 

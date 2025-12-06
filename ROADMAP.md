@@ -36,7 +36,6 @@ This document outlines the planned development roadmap for the LangSpace project
 ## Immediate Priorities (v0.1.1)
 
 ### 1. Documentation and Consistency
-- [x] Fix Go version requirements in documentation
 - [x] Update API documentation to match implementation
 - [x] Align repository naming across all documentation
 - [x] Verify and update performance claims
@@ -141,22 +140,22 @@ This document outlines the planned development roadmap for the LangSpace project
 
 ## Release Schedule
 
-- **v0.1.1**: Q1 2026
+- **v0.1.1**:
   - Focus on documentation fixes
   - Core implementation alignment
   - Security fundamentals
 
-- **v0.2.0**: Q2 2026
+- **v0.2.0**:
   - Entity system enhancements
   - Security and validation
   - Architecture improvements
 
-- **v0.3.0**: Q4 2026
+- **v0.3.0**:
   - Advanced features implementation
   - Developer tools
   - Performance optimizations
 
-- **v1.0.0**: Q2 2027
+- **v1.0.0**:
   - Enterprise features
   - Integration support
   - Production readiness
