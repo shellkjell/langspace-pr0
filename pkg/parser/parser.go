@@ -262,6 +262,8 @@ func (p *Parser) parseBlockEntity(entityType, name string, line, col int) (ast.E
 }
 
 // parseProperty parses a property assignment: key: value
+// This also handles typed parameters: key: type required/optional [default] ["description"]
+// And nested entity blocks: step "name" { ... }
 func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 	keyTok := p.current()
 	if keyTok.Type != tokenizer.TokenTypeIdentifier {
@@ -274,7 +276,28 @@ func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 	key := keyTok.Value
 	p.advance()
 
-	// Expect colon
+	// Check for nested entity block: step "name" { or parallel { etc
+	// Only specific keywords trigger nested entity parsing
+	nextTok := p.current()
+	if p.isNestedEntityKeyword(key) && (nextTok.Type == tokenizer.TokenTypeString || nextTok.Type == tokenizer.TokenTypeLeftBrace) {
+		// This is a nested entity block (like step "analyze" { ... } or parallel { ... })
+		nestedValue, err := p.parseNestedEntity(key, keyTok.Line, keyTok.Column)
+		if err != nil {
+			return err
+		}
+		// Add to parent entity - special handling for pipelines
+		if pipeline, ok := entity.(*ast.PipelineEntity); ok {
+			if step, ok := nestedValue.Entity.(*ast.StepEntity); ok {
+				pipeline.Steps = append(pipeline.Steps, step)
+				return nil
+			}
+		}
+		// For other cases, store as property
+		entity.SetProperty(key, nestedValue)
+		return nil
+	}
+
+	// Expect colon for regular property
 	if _, err := p.expect(tokenizer.TokenTypeColon); err != nil {
 		return err
 	}
@@ -287,6 +310,15 @@ func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 
 	entity.SetProperty(key, value)
 	return nil
+}
+
+// isNestedEntityKeyword checks if an identifier is a keyword that can start a nested entity block
+func (p *Parser) isNestedEntityKeyword(name string) bool {
+	switch name {
+	case "step", "parallel", "branch", "loop", "handler", "on_success", "on_failure", "on_error":
+		return true
+	}
+	return false
 }
 
 // parseValue parses a value (string, number, bool, array, object, reference)
@@ -331,11 +363,35 @@ func (p *Parser) parseValue() (ast.Value, *ParseError) {
 		return ast.VariableValue{Name: nameTok.Value}, nil
 
 	case tokenizer.TokenTypeIdentifier:
-		// Could be a reference like agent("name") or file("path")
-		// Or a simple identifier used as a value
+		// Could be:
+		// 1. A reference like agent("name") or file("path")
+		// 2. A typed parameter: string required "desc"
+		// 3. An inline type definition: enum ["a", "b"]
+		// 4. A typed block: http { ... } or shell { ... }
+		// 5. A simple identifier used as a value
 		nextTok := p.peek(1)
 		if nextTok.Type == tokenizer.TokenTypeLeftParen {
 			return p.parseReference()
+		}
+		// Check if this is a typed parameter: type required/optional [default] ["description"]
+		// It must have required/optional after the type name
+		if p.isTypeName(tok.Value) && nextTok.Type == tokenizer.TokenTypeIdentifier {
+			nextVal := nextTok.Value
+			if nextVal == "required" || nextVal == "optional" {
+				return p.parseTypedParameter()
+			}
+		}
+		// Check for inline enum type: enum ["a", "b", "c"]
+		if tok.Value == "enum" && nextTok.Type == tokenizer.TokenTypeLeftBracket {
+			return p.parseInlineEnum()
+		}
+		// Check for typed block: identifier { ... } (e.g., http { }, shell { }, builtin("..."))
+		if nextTok.Type == tokenizer.TokenTypeLeftBrace {
+			return p.parseTypedBlock()
+		}
+		// Check for property access chain: identifier.property.property
+		if nextTok.Type == tokenizer.TokenTypeDot {
+			return p.parsePropertyAccess()
 		}
 		// Simple identifier as value (e.g., tool names in array)
 		p.advance()
@@ -354,6 +410,249 @@ func (p *Parser) parseValue() (ast.Value, *ParseError) {
 			Message: fmt.Sprintf("unexpected token in value: %s", tok.Type),
 		}
 	}
+}
+
+// isTypeName checks if an identifier is a type name for typed parameters
+func (p *Parser) isTypeName(name string) bool {
+	switch name {
+	case "string", "number", "bool", "boolean", "array", "object", "enum":
+		return true
+	}
+	return false
+}
+
+// parseTypedParameter parses a typed parameter declaration:
+// type required/optional [default] ["description"]
+// e.g., "string required \"description\"" or "string optional \"default\" \"description\""
+func (p *Parser) parseTypedParameter() (ast.Value, *ParseError) {
+	typeTok := p.current()
+	paramType := typeTok.Value
+	p.advance()
+
+	// Next should be "required" or "optional"
+	reqTok := p.current()
+	if reqTok.Type != tokenizer.TokenTypeIdentifier {
+		return nil, &ParseError{
+			Line:    reqTok.Line,
+			Column:  reqTok.Column,
+			Message: "expected 'required' or 'optional' after type",
+		}
+	}
+
+	var required bool
+	switch reqTok.Value {
+	case "required":
+		required = true
+	case "optional":
+		required = false
+	default:
+		return nil, &ParseError{
+			Line:    reqTok.Line,
+			Column:  reqTok.Column,
+			Message: fmt.Sprintf("expected 'required' or 'optional', got '%s'", reqTok.Value),
+		}
+	}
+	p.advance()
+
+	result := ast.TypedParameterValue{
+		ParamType: paramType,
+		Required:  required,
+	}
+
+	// Parse optional default value and/or description
+	// For required: string required "description"
+	// For optional: string optional "default" "description" OR string optional false "description"
+	for p.current().Type == tokenizer.TokenTypeString ||
+		p.current().Type == tokenizer.TokenTypeNumber ||
+		p.current().Type == tokenizer.TokenTypeBoolean ||
+		p.current().Type == tokenizer.TokenTypeLeftBracket {
+
+		tok := p.current()
+		switch tok.Type {
+		case tokenizer.TokenTypeString:
+			p.advance()
+			// If we already have a default, this is the description
+			// If required is true, first string is description
+			// If required is false, first string is default, second is description
+			if required {
+				result.Description = tok.Value
+			} else if result.Default == nil {
+				result.Default = ast.StringValue{Value: tok.Value}
+			} else {
+				result.Description = tok.Value
+			}
+		case tokenizer.TokenTypeNumber:
+			p.advance()
+			val, _ := strconv.ParseFloat(tok.Value, 64)
+			result.Default = ast.NumberValue{Value: val}
+		case tokenizer.TokenTypeBoolean:
+			p.advance()
+			result.Default = ast.BoolValue{Value: tok.Value == "true"}
+		case tokenizer.TokenTypeLeftBracket:
+			// Array default or enum values
+			if paramType == "enum" {
+				enumVals, err := p.parseEnumValues()
+				if err != nil {
+					return nil, err
+				}
+				result.EnumValues = enumVals
+			} else {
+				arrVal, err := p.parseArray()
+				if err != nil {
+					return nil, err
+				}
+				result.Default = arrVal
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// parseEnumValues parses enum values: ["value1", "value2", ...]
+func (p *Parser) parseEnumValues() ([]string, *ParseError) {
+	if _, err := p.expect(tokenizer.TokenTypeLeftBracket); err != nil {
+		return nil, err
+	}
+
+	values := make([]string, 0)
+
+	for p.current().Type != tokenizer.TokenTypeRightBracket {
+		if p.pos >= len(p.tokens) {
+			return nil, &ParseError{
+				Line:    0,
+				Column:  0,
+				Message: "unclosed enum values array",
+			}
+		}
+
+		tok := p.current()
+		if tok.Type != tokenizer.TokenTypeString {
+			return nil, &ParseError{
+				Line:    tok.Line,
+				Column:  tok.Column,
+				Message: "expected string in enum values",
+			}
+		}
+		values = append(values, tok.Value)
+		p.advance()
+
+		// Optional comma
+		if p.current().Type == tokenizer.TokenTypeComma {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(tokenizer.TokenTypeRightBracket); err != nil {
+		return nil, err
+	}
+
+	return values, nil
+}
+
+// parseInlineEnum parses an inline enum type: enum ["value1", "value2", ...]
+func (p *Parser) parseInlineEnum() (ast.Value, *ParseError) {
+	// Consume "enum"
+	p.advance()
+
+	values, err := p.parseEnumValues()
+	if err != nil {
+		return nil, err
+	}
+
+	return ast.TypedParameterValue{
+		ParamType:  "enum",
+		EnumValues: values,
+	}, nil
+}
+
+// parseTypedBlock parses a typed block: identifier { ... } (e.g., http { method: "GET" })
+func (p *Parser) parseTypedBlock() (ast.Value, *ParseError) {
+	typeTok := p.current()
+	blockType := typeTok.Value
+	line, col := typeTok.Line, typeTok.Column
+	p.advance()
+
+	// Create a nested entity for this block
+	nestedValue, err := p.parseNestedEntity(blockType, line, col)
+	if err != nil {
+		return nil, err
+	}
+
+	return nestedValue, nil
+}
+
+// parsePropertyAccess parses a property access chain: identifier.property.property
+// e.g., params.location, step("x").output
+func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
+	baseTok := p.current()
+	base := baseTok.Value
+	p.advance()
+
+	path := make([]string, 0)
+
+	// Parse the property chain
+	for p.current().Type == tokenizer.TokenTypeDot {
+		p.advance() // consume dot
+		propTok := p.current()
+		if propTok.Type != tokenizer.TokenTypeIdentifier {
+			return nil, &ParseError{
+				Line:    propTok.Line,
+				Column:  propTok.Column,
+				Message: "expected property name after .",
+			}
+		}
+		path = append(path, propTok.Value)
+		p.advance()
+	}
+
+	return ast.PropertyAccessValue{Base: base, Path: path}, nil
+}
+
+// parseNestedEntity parses a nested entity block like: step "name" { ... } or parallel { ... }
+func (p *Parser) parseNestedEntity(entityType string, line, col int) (ast.NestedEntityValue, *ParseError) {
+	var name string
+
+	// Check if there's a name (string) before the brace
+	if p.current().Type == tokenizer.TokenTypeString {
+		name = p.current().Value
+		p.advance()
+	}
+
+	// Create the nested entity
+	entity, err := ast.NewEntity(entityType, name)
+	if err != nil {
+		// If the entity type isn't registered, create a generic entity
+		entity = ast.NewBaseEntity(entityType, name)
+	}
+	entity.SetLocation(line, col)
+
+	// Expect opening brace
+	if _, astErr := p.expect(tokenizer.TokenTypeLeftBrace); astErr != nil {
+		return ast.NestedEntityValue{}, astErr
+	}
+
+	// Parse properties until closing brace
+	for p.current().Type != tokenizer.TokenTypeRightBrace {
+		if p.pos >= len(p.tokens) {
+			return ast.NestedEntityValue{}, &ParseError{
+				Line:    line,
+				Column:  col,
+				Message: "unclosed nested block",
+			}
+		}
+
+		if propErr := p.parseProperty(entity); propErr != nil {
+			return ast.NestedEntityValue{}, propErr
+		}
+	}
+
+	// Expect closing brace
+	if _, astErr := p.expect(tokenizer.TokenTypeRightBrace); astErr != nil {
+		return ast.NestedEntityValue{}, astErr
+	}
+
+	return ast.NestedEntityValue{Entity: entity}, nil
 }
 
 // parseReference parses a reference like agent("name") or step("x").output

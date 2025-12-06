@@ -717,3 +717,260 @@ func BenchmarkParser_Parse_Large(b *testing.B) {
 		p.Parse()
 	}
 }
+
+// TestParser_TypedParameters tests parsing of typed parameter declarations
+func TestParser_TypedParameters(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		checkFirst func(t *testing.T, e ast.Entity)
+	}{
+		{
+			name: "required_string_param",
+			input: `tool "test" {
+				parameters: {
+					name: string required "The name"
+				}
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				params, ok := e.GetProperty("parameters")
+				if !ok {
+					t.Fatal("expected parameters property")
+				}
+				obj, ok := params.(ast.ObjectValue)
+				if !ok {
+					t.Fatalf("expected ObjectValue, got %T", params)
+				}
+				nameParam, ok := obj.Properties["name"]
+				if !ok {
+					t.Fatal("expected name in parameters")
+				}
+				typed, ok := nameParam.(ast.TypedParameterValue)
+				if !ok {
+					t.Fatalf("expected TypedParameterValue, got %T", nameParam)
+				}
+				if typed.ParamType != "string" {
+					t.Errorf("ParamType = %q, want string", typed.ParamType)
+				}
+				if !typed.Required {
+					t.Error("expected Required = true")
+				}
+				if typed.Description != "The name" {
+					t.Errorf("Description = %q, want 'The name'", typed.Description)
+				}
+			},
+		},
+		{
+			name: "optional_with_default",
+			input: `tool "test" {
+				parameters: {
+					count: number optional 10 "The count"
+				}
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				params, _ := e.GetProperty("parameters")
+				obj := params.(ast.ObjectValue)
+				countParam := obj.Properties["count"].(ast.TypedParameterValue)
+				if countParam.ParamType != "number" {
+					t.Errorf("ParamType = %q, want number", countParam.ParamType)
+				}
+				if countParam.Required {
+					t.Error("expected Required = false")
+				}
+				def, ok := countParam.Default.(ast.NumberValue)
+				if !ok {
+					t.Fatalf("expected NumberValue default, got %T", countParam.Default)
+				}
+				if def.Value != 10 {
+					t.Errorf("Default = %v, want 10", def.Value)
+				}
+			},
+		},
+		{
+			name: "inline_enum",
+			input: `tool "test" {
+				output_schema: {
+					type: enum ["error", "warning", "info"]
+				}
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				schema, _ := e.GetProperty("output_schema")
+				obj := schema.(ast.ObjectValue)
+				typeParam := obj.Properties["type"].(ast.TypedParameterValue)
+				if typeParam.ParamType != "enum" {
+					t.Errorf("ParamType = %q, want enum", typeParam.ParamType)
+				}
+				if len(typeParam.EnumValues) != 3 {
+					t.Errorf("EnumValues length = %d, want 3", len(typeParam.EnumValues))
+				}
+				expected := []string{"error", "warning", "info"}
+				for i, v := range typeParam.EnumValues {
+					if v != expected[i] {
+						t.Errorf("EnumValues[%d] = %q, want %q", i, v, expected[i])
+					}
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+			if err != nil {
+				t.Fatalf("Parser.Parse() error = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d entities, want 1", len(got))
+			}
+			tt.checkFirst(t, got[0])
+		})
+	}
+}
+
+// TestParser_NestedBlocks tests parsing of nested entity blocks
+func TestParser_NestedBlocks(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		checkFirst func(t *testing.T, e ast.Entity)
+	}{
+		{
+			name: "pipeline_with_steps",
+			input: `pipeline "review" {
+				step "analyze" {
+					use: agent("analyzer")
+					input: $input
+				}
+				step "report" {
+					use: agent("reporter")
+					input: step("analyze").output
+				}
+				output: step("report").output
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				pipeline, ok := e.(*ast.PipelineEntity)
+				if !ok {
+					t.Fatalf("expected *ast.PipelineEntity, got %T", e)
+				}
+				if len(pipeline.Steps) != 2 {
+					t.Fatalf("got %d steps, want 2", len(pipeline.Steps))
+				}
+				if pipeline.Steps[0].Name() != "analyze" {
+					t.Errorf("Step[0].Name() = %q, want analyze", pipeline.Steps[0].Name())
+				}
+				if pipeline.Steps[1].Name() != "report" {
+					t.Errorf("Step[1].Name() = %q, want report", pipeline.Steps[1].Name())
+				}
+			},
+		},
+		{
+			name: "tool_with_handler_block",
+			input: `tool "fetch" {
+				handler: http {
+					method: "GET"
+					url: "https://api.example.com"
+				}
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				handler, ok := e.GetProperty("handler")
+				if !ok {
+					t.Fatal("expected handler property")
+				}
+				nested, ok := handler.(ast.NestedEntityValue)
+				if !ok {
+					t.Fatalf("expected NestedEntityValue, got %T", handler)
+				}
+				if nested.Entity.Type() != "http" {
+					t.Errorf("handler type = %q, want http", nested.Entity.Type())
+				}
+				method, ok := nested.Entity.GetProperty("method")
+				if !ok {
+					t.Fatal("expected method property in handler")
+				}
+				if sv, ok := method.(ast.StringValue); !ok || sv.Value != "GET" {
+					t.Errorf("method = %v, want GET", method)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+			if err != nil {
+				t.Fatalf("Parser.Parse() error = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d entities, want 1", len(got))
+			}
+			tt.checkFirst(t, got[0])
+		})
+	}
+}
+
+// TestParser_PropertyAccess tests parsing of property access chains
+func TestParser_PropertyAccess(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		checkFirst func(t *testing.T, e ast.Entity)
+	}{
+		{
+			name: "simple_property_access",
+			input: `tool "test" {
+				query: params.location
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				query, ok := e.GetProperty("query")
+				if !ok {
+					t.Fatal("expected query property")
+				}
+				access, ok := query.(ast.PropertyAccessValue)
+				if !ok {
+					t.Fatalf("expected PropertyAccessValue, got %T", query)
+				}
+				if access.Base != "params" {
+					t.Errorf("Base = %q, want params", access.Base)
+				}
+				if len(access.Path) != 1 || access.Path[0] != "location" {
+					t.Errorf("Path = %v, want [location]", access.Path)
+				}
+			},
+		},
+		{
+			name: "nested_property_access",
+			input: `tool "test" {
+				value: config.defaults.timeout
+			}`,
+			checkFirst: func(t *testing.T, e ast.Entity) {
+				val, _ := e.GetProperty("value")
+				access := val.(ast.PropertyAccessValue)
+				if access.Base != "config" {
+					t.Errorf("Base = %q, want config", access.Base)
+				}
+				if len(access.Path) != 2 {
+					t.Fatalf("Path length = %d, want 2", len(access.Path))
+				}
+				if access.Path[0] != "defaults" || access.Path[1] != "timeout" {
+					t.Errorf("Path = %v, want [defaults timeout]", access.Path)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(tt.input)
+			got, err := p.Parse()
+			if err != nil {
+				t.Fatalf("Parser.Parse() error = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d entities, want 1", len(got))
+			}
+			tt.checkFirst(t, got[0])
+		})
+	}
+}

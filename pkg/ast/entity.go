@@ -70,6 +70,33 @@ type VariableValue struct {
 
 func (v VariableValue) isValue() {}
 
+// TypedParameterValue represents a typed parameter declaration
+// e.g., "query: string required" or "name: string optional \"default\" \"description\""
+type TypedParameterValue struct {
+	ParamType   string   // "string", "number", "bool", "array", "object", "enum"
+	Required    bool     // true if "required", false if "optional"
+	Default     Value    // Default value (optional)
+	Description string   // Documentation string (optional)
+	EnumValues  []string // For enum types, the allowed values
+}
+
+func (t TypedParameterValue) isValue() {}
+
+// NestedEntityValue represents a nested entity block (e.g., step inside pipeline)
+type NestedEntityValue struct {
+	Entity Entity
+}
+
+func (n NestedEntityValue) isValue() {}
+
+// PropertyAccessValue represents a property access chain (e.g., params.location or step("x").output)
+type PropertyAccessValue struct {
+	Base string   // The base identifier (e.g., "params")
+	Path []string // The property path (e.g., ["location"])
+}
+
+func (p PropertyAccessValue) isValue() {}
+
 // Entity represents a LangSpace entity, which is the fundamental building block
 // of the language. Each entity has a type and a set of properties that define
 // its behavior and characteristics.

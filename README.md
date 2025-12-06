@@ -272,19 +272,26 @@ See the [examples/](examples/) directory:
 | `01-hello-world.ls` | Basic agent definition | ✅ Parses |
 | `02-files.ls` | File declarations and references | ✅ Parses |
 | `03-agents.ls` | Agent configuration options | ✅ Parses |
-| `04-intentions.ls` | Expressing desired outcomes | 🚧 Aspirational |
-| `05-pipelines.ls` | Multi-step workflows | 🚧 Aspirational |
-| `06-tools-mcp.ls` | Tool definitions and MCP integration | 🚧 Aspirational |
-| `07-config.ls` | Global configuration | 🚧 Aspirational |
-| `08-complete-code-review.ls` | Full code review workflow | 🚧 Aspirational |
-| `09-scripts.ls` | Code-first agent actions | 🚧 Aspirational |
+| `04-intentions.ls` | Expressing desired outcomes | 🚧 Partial (needs `git.func()` syntax) |
+| `05-pipelines.ls` | Multi-step workflows | 🚧 Partial (needs `branch`/`loop`) |
+| `06-tools-mcp.ls` | Tool definitions and MCP integration | ✅ Parses |
+| `07-config.ls` | Global configuration | 🚧 Partial (needs comparison expressions) |
+| `08-complete-code-review.ls` | Full code review workflow | 🚧 Partial (needs advanced expressions) |
+| `09-scripts.ls` | Code-first agent actions | 🚧 Partial (needs advanced expressions) |
 
-> **Current Parser Limitations:** The parser handles flat entity declarations but does not yet support:
-> - Nested blocks (e.g., `step { }` inside `pipeline { }`)
-> - Typed parameters (e.g., `query: string required`)
-> - Special syntax like `parallel { }`, `branch`, `loop`
+> **Current Parser Capabilities:**
+> - Nested blocks (e.g., `step { }` inside `pipeline { }`) ✅
+> - Typed parameters (e.g., `query: string required "description"`) ✅
+> - Inline typed blocks (e.g., `handler: http { ... }`) ✅
+> - Property access chains (e.g., `params.location`) ✅
+> - Inline enums (e.g., `type: enum ["a", "b", "c"]`) ✅
 >
-> Examples marked as "Aspirational" demonstrate the target syntax for future versions.
+> **Not Yet Implemented:**
+> - Method calls on objects (`git.staged_files()`)
+> - Comparison expressions (`env("X") == "true"`)
+> - Control flow (`branch`, `loop`, `break_if`)
+>
+> Examples marked as "Partial" demonstrate syntax that's partially supported.
 
 ## Architecture
 
@@ -306,8 +313,11 @@ langspace/
 
 ### ✅ Implemented & Working
 - Block-based tokenizer with DSL syntax support
-- Parser for flat entity declarations (file, agent, tool, intent, pipeline, step, trigger, config, mcp, script)
+- Parser for entity declarations with nested blocks and typed parameters
 - AST representation with entity metadata and relationships
+- Nested entity parsing (pipelines with steps, tools with handlers)
+- Typed parameter declarations (`name: string required "desc"`)
+- Property access chains (`params.location`, `config.defaults.timeout`)
 - Validation framework with extensible custom validators
 - Workspace management with entity hooks, events, snapshots, and persistence
 - Error recovery parsing with detailed line/column error reporting

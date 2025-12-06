@@ -29,9 +29,11 @@ This document outlines the planned development roadmap for the LangSpace project
 
 
 ### Known Issues / Limitations
-- [ ] **Nested block parsing not yet supported** — Step entities inside pipeline blocks, and other nested constructs (parallel, branch, loop), require parser enhancement
+- [x] ~~Nested block parsing not yet supported~~ — Now supports nested entities (step inside pipeline, handler blocks)
+- [x] ~~Typed parameters not yet supported~~ — Now parses `name: string required "desc"` syntax
+- [ ] Advanced expression syntax not yet supported — Method calls (`git.func()`), comparisons (`x == y`), control flow (`branch`, `loop`)
 - [ ] Some PRD features still pending (triggers, automation, execution)
-- [ ] Only 3 of 9 examples currently parse successfully (01-03)
+- [ ] 4 of 9 examples parse fully (01-03, 06); 5 need advanced expressions
 - [x] Performance claims verified with current benchmarks
 - [x] Entity relationships implemented
 
@@ -68,12 +70,13 @@ This document outlines the planned development roadmap for the LangSpace project
 
 ### 3. Parser Improvements
 - [x] Add support for comments
-- [ ] **Implement nested block parsing** — Support step/parallel/branch/loop inside pipeline blocks
+- [x] ~~Implement nested block parsing~~ — Supports step/parallel/handler/on_success/on_failure/on_error inside parent blocks
 - [ ] Implement syntax highlighting
 - [ ] Add source map support
 - [x] Improve error recovery
 - [ ] Support for custom entity types
-- [ ] Handle typed parameters (e.g., `query: string required`)
+- [x] ~~Handle typed parameters~~ — Supports `query: string required "desc"` and `type: enum ["a", "b"]`
+- [ ] **Expression parser** — Method calls, comparisons, control flow (branch, loop, break_if)
 
 ### 4. Workspace Features
 > **Note:** Many workspace features are implemented as infrastructure for future phases.
