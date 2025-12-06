@@ -521,6 +521,7 @@ func (p *Parser) isEntityType(name string) bool {
 }
 
 // parseFunctionCall parses a function call: identifier(args...)
+// Also handles property access after function calls: func().property
 func (p *Parser) parseFunctionCall() (ast.Value, *ParseError) {
 	funcTok := p.current()
 	p.advance() // consume identifier
@@ -530,10 +531,47 @@ func (p *Parser) parseFunctionCall() (ast.Value, *ParseError) {
 		return nil, err
 	}
 
-	return ast.FunctionCallValue{
+	result := ast.FunctionCallValue{
 		Function:  funcTok.Value,
 		Arguments: args,
-	}, nil
+	}
+
+	// Check for property access after function call: func().property
+	if p.current().Type == tokenizer.TokenTypeDot {
+		p.advance() // consume dot
+		propTok := p.current()
+		if propTok.Type != tokenizer.TokenTypeIdentifier {
+			return nil, &ParseError{
+				Line:    propTok.Line,
+				Column:  propTok.Column,
+				Message: "expected property name after .",
+			}
+		}
+		propName := propTok.Value
+		p.advance()
+
+		// Check if this is a method call: func().method()
+		if p.current().Type == tokenizer.TokenTypeLeftParen {
+			methodArgs, err := p.parseArgumentList()
+			if err != nil {
+				return nil, err
+			}
+			return ast.MethodCallValue{
+				Object:    result,
+				Method:    propName,
+				Arguments: methodArgs,
+			}, nil
+		}
+
+		// Property access: func().property
+		return ast.MethodCallValue{
+			Object:    result,
+			Method:    propName,
+			Arguments: []ast.Value{},
+		}, nil
+	}
+
+	return result, nil
 }
 
 // parseTypedParameter parses a typed parameter declaration:

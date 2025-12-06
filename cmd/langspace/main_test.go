@@ -16,8 +16,9 @@ func TestRun_WithStdin(t *testing.T) {
 
 	stdin := strings.NewReader(input)
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{}, stdin, stdout)
+	err := run([]string{"parse"}, stdin, stdout, stderr)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -51,8 +52,9 @@ agent "analyzer" {
 
 	stdin := strings.NewReader("")
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{"-file", tmpFile}, stdin, stdout)
+	err := run([]string{"parse", "-file", tmpFile}, stdin, stdout, stderr)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -76,8 +78,9 @@ func TestRun_ParseError(t *testing.T) {
 
 	stdin := strings.NewReader(input)
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{}, stdin, stdout)
+	err := run([]string{"parse"}, stdin, stdout, stderr)
 	if err == nil {
 		t.Error("expected parse error, got nil")
 	}
@@ -89,8 +92,9 @@ func TestRun_ParseError(t *testing.T) {
 func TestRun_FileNotFound(t *testing.T) {
 	stdin := strings.NewReader("")
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{"-file", "/nonexistent/file.ls"}, stdin, stdout)
+	err := run([]string{"parse", "-file", "/nonexistent/file.ls"}, stdin, stdout, stderr)
 	if err == nil {
 		t.Error("expected file not found error, got nil")
 	}
@@ -102,8 +106,9 @@ func TestRun_FileNotFound(t *testing.T) {
 func TestRun_InvalidFlags(t *testing.T) {
 	stdin := strings.NewReader("")
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{"-invalid-flag"}, stdin, stdout)
+	err := run([]string{"parse", "-invalid-flag"}, stdin, stdout, stderr)
 	if err == nil {
 		t.Error("expected flag error, got nil")
 	}
@@ -115,8 +120,9 @@ func TestRun_InvalidFlags(t *testing.T) {
 func TestRun_EmptyInput(t *testing.T) {
 	stdin := strings.NewReader("")
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{}, stdin, stdout)
+	err := run([]string{"parse"}, stdin, stdout, stderr)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -162,8 +168,9 @@ script "update-db" {
 
 	stdin := strings.NewReader(input)
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{}, stdin, stdout)
+	err := run([]string{"parse"}, stdin, stdout, stderr)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -203,8 +210,9 @@ agent "test" {
 
 	stdin := strings.NewReader(input)
 	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	err := run([]string{}, stdin, stdout)
+	err := run([]string{"parse"}, stdin, stdout, stderr)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}

@@ -2,27 +2,90 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/shellkjell/langspace/pkg/parser"
+	"github.com/shellkjell/langspace/pkg/runtime"
 	"github.com/shellkjell/langspace/pkg/workspace"
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 }
 
 // run contains the main application logic, separated from main() for testability.
 // This follows the pattern recommended by Mat Ryer and others for Go CLI apps.
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	fs := flag.NewFlagSet("langspace", flag.ContinueOnError)
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		return showHelp(stdout)
+	}
+
+	command := args[0]
+	commandArgs := args[1:]
+
+	switch command {
+	case "parse":
+		return runParse(commandArgs, stdin, stdout)
+	case "run":
+		return runExecute(commandArgs, stdin, stdout, stderr)
+	case "validate":
+		return runValidate(commandArgs, stdin, stdout)
+	case "help", "-h", "--help":
+		return showHelp(stdout)
+	case "version", "-v", "--version":
+		return showVersion(stdout)
+	default:
+		// If no subcommand, treat as parse (backward compatibility)
+		return runParse(args, stdin, stdout)
+	}
+}
+
+func showHelp(w io.Writer) error {
+	help := `LangSpace - A declarative language for composing AI workflows
+
+Usage:
+  langspace <command> [options]
+
+Commands:
+  parse     Parse a LangSpace file and display entities
+  run       Execute an intent or pipeline
+  validate  Validate a LangSpace file without executing
+
+Options:
+  -h, --help     Show this help message
+  -v, --version  Show version information
+
+Examples:
+  langspace parse -file workflow.ls
+  langspace run -file workflow.ls -name my-intent
+  langspace run -file workflow.ls -name my-pipeline -input "Review this code"
+  langspace validate -file workflow.ls
+
+For more information, visit: https://github.com/shellkjell/langspace
+`
+	fmt.Fprint(w, help)
+	return nil
+}
+
+func showVersion(w io.Writer) error {
+	fmt.Fprintln(w, "langspace version 0.1.0")
+	return nil
+}
+
+// runParse handles the parse command
+func runParse(args []string, stdin io.Reader, stdout io.Writer) error {
+	fs := flag.NewFlagSet("parse", flag.ContinueOnError)
 	inputFile := fs.String("file", "", "Input file to parse")
+	showJSON := fs.Bool("json", false, "Output as JSON")
 
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
@@ -50,9 +113,179 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 	}
 
+	if *showJSON {
+		return outputJSON(stdout, ws)
+	}
+
 	// Print statistics
 	printStats(stdout, ws.Stat(), len(entities))
 	return nil
+}
+
+// runExecute handles the run command
+func runExecute(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	inputFile := fs.String("file", "", "LangSpace file to execute")
+	entityName := fs.String("name", "", "Name of the intent or pipeline to execute")
+	entityType := fs.String("type", "", "Entity type (intent or pipeline, auto-detected if not specified)")
+	inputData := fs.String("input", "", "Input data for the execution")
+	inputFile2 := fs.String("input-file", "", "File containing input data")
+	timeout := fs.Duration("timeout", 5*time.Minute, "Execution timeout")
+	noStream := fs.Bool("no-stream", false, "Disable streaming output")
+	verbose := fs.Bool("verbose", false, "Show verbose output")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	if *inputFile == "" {
+		return fmt.Errorf("required flag -file not provided")
+	}
+
+	if *entityName == "" {
+		return fmt.Errorf("required flag -name not provided")
+	}
+
+	// Read and parse the file
+	content, err := readInput(*inputFile, stdin)
+	if err != nil {
+		return fmt.Errorf("reading file: %w", err)
+	}
+
+	ws := workspace.New()
+	p := parser.New(content)
+	entities, err := p.Parse()
+	if err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	for _, entity := range entities {
+		if err := ws.AddEntity(entity); err != nil {
+			return fmt.Errorf("adding entity %q: %w", entity.Name(), err)
+		}
+	}
+
+	// Determine entity type if not specified
+	if *entityType == "" {
+		*entityType = detectEntityType(ws, *entityName)
+		if *entityType == "" {
+			return fmt.Errorf("entity %q not found. Specify -type to search by type", *entityName)
+		}
+	}
+
+	// Get input data
+	var input interface{}
+	if *inputData != "" {
+		input = *inputData
+	} else if *inputFile2 != "" {
+		data, err := os.ReadFile(*inputFile2)
+		if err != nil {
+			return fmt.Errorf("reading input file: %w", err)
+		}
+		input = string(data)
+	}
+
+	// Create runtime
+	rt := runtime.New(ws, runtime.WithConfig(&runtime.Config{
+		DefaultModel:    "claude-sonnet-4-20250514",
+		DefaultProvider: "anthropic",
+		Timeout:         *timeout,
+		EnableStreaming: !*noStream,
+	}))
+
+	// Register providers
+	rt.RegisterProvider("anthropic", runtime.NewAnthropicProvider())
+	rt.RegisterProvider("openai", runtime.NewOpenAIProvider())
+
+	// Create stream handler for output
+	var handler runtime.StreamHandler
+	if !*noStream {
+		handler = &CLIStreamHandler{
+			stdout:  stdout,
+			stderr:  stderr,
+			verbose: *verbose,
+		}
+	}
+
+	// Execute
+	ctx := context.Background()
+	var opts []runtime.ExecuteOption
+	if input != nil {
+		opts = append(opts, runtime.WithInput(input))
+	}
+	if handler != nil {
+		opts = append(opts, runtime.WithStreamHandler(handler))
+	}
+	opts = append(opts, runtime.WithTimeout(*timeout))
+
+	result, err := rt.ExecuteByName(ctx, *entityType, *entityName, opts...)
+	if err != nil {
+		return fmt.Errorf("execution failed: %w", err)
+	}
+
+	// Print result
+	if !*noStream {
+		fmt.Fprintln(stdout) // Newline after streaming
+	}
+
+	if *verbose {
+		printExecutionResult(stdout, result)
+	} else if result.Output != nil && !*noStream {
+		// If not streaming, print the output now
+	} else if result.Output != nil {
+		fmt.Fprintf(stdout, "%v\n", result.Output)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("execution failed: %v", result.Error)
+	}
+
+	return nil
+}
+
+// runValidate handles the validate command
+func runValidate(args []string, stdin io.Reader, stdout io.Writer) error {
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	inputFile := fs.String("file", "", "LangSpace file to validate")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	input, err := readInput(*inputFile, stdin)
+	if err != nil {
+		return fmt.Errorf("reading input: %w", err)
+	}
+
+	// Parse with error recovery
+	p := parser.New(input)
+	result := p.ParseWithRecovery()
+
+	if result.HasErrors() {
+		fmt.Fprintf(stdout, "Validation failed with %d error(s):\n", len(result.Errors))
+		for i, e := range result.Errors {
+			fmt.Fprintf(stdout, "  %d. %s\n", i+1, e.Error())
+		}
+		return fmt.Errorf("validation failed")
+	}
+
+	fmt.Fprintf(stdout, "Validation successful: %d entities parsed\n", len(result.Entities))
+	for _, entity := range result.Entities {
+		fmt.Fprintf(stdout, "  - %s %q\n", entity.Type(), entity.Name())
+	}
+
+	return nil
+}
+
+// detectEntityType tries to find an entity by name and returns its type
+func detectEntityType(ws *workspace.Workspace, name string) string {
+	// Try common types in order of likelihood
+	for _, typ := range []string{"intent", "pipeline", "agent", "tool"} {
+		if _, found := ws.GetEntityByName(typ, name); found {
+			return typ
+		}
+	}
+	return ""
 }
 
 // readInput reads input from a file or stdin
@@ -86,4 +319,73 @@ func printStats(w io.Writer, stats workspace.WorkspaceStats, entityCount int) {
 	fmt.Fprintf(w, "  Number of relationships: %d\n", stats.TotalRelationships)
 	fmt.Fprintf(w, "  Number of hooks: %d\n", stats.TotalHooks)
 	fmt.Fprintf(w, "Successfully processed entities: %d\n", entityCount)
+}
+
+// outputJSON outputs the workspace as JSON
+func outputJSON(w io.Writer, ws *workspace.Workspace) error {
+	return ws.SaveTo(w)
+}
+
+// printExecutionResult prints detailed execution result
+func printExecutionResult(w io.Writer, result *runtime.ExecutionResult) {
+	fmt.Fprintln(w, "\n--- Execution Result ---")
+	fmt.Fprintf(w, "Success: %v\n", result.Success)
+	fmt.Fprintf(w, "Duration: %s\n", result.Duration)
+	fmt.Fprintf(w, "Tokens Used: %d (input: %d, output: %d)\n",
+		result.TokensUsed.TotalTokens,
+		result.TokensUsed.InputTokens,
+		result.TokensUsed.OutputTokens)
+
+	if len(result.StepResults) > 0 {
+		fmt.Fprintln(w, "\nStep Results:")
+		for name, step := range result.StepResults {
+			fmt.Fprintf(w, "  %s: success=%v, duration=%s\n", name, step.Success, step.Duration)
+		}
+	}
+
+	if result.Error != nil {
+		fmt.Fprintf(w, "\nError: %v\n", result.Error)
+	}
+
+	if result.Output != nil {
+		fmt.Fprintln(w, "\n--- Output ---")
+		fmt.Fprintf(w, "%v\n", result.Output)
+	}
+}
+
+// CLIStreamHandler handles streaming output for the CLI
+type CLIStreamHandler struct {
+	stdout      io.Writer
+	stderr      io.Writer
+	verbose     bool
+	chunkBuffer strings.Builder
+}
+
+func (h *CLIStreamHandler) OnChunk(chunk runtime.StreamChunk) {
+	if chunk.Type == runtime.ChunkTypeContent {
+		fmt.Fprint(h.stdout, chunk.Content)
+	}
+}
+
+func (h *CLIStreamHandler) OnProgress(event runtime.ProgressEvent) {
+	if h.verbose {
+		switch event.Type {
+		case runtime.ProgressTypeStart:
+			fmt.Fprintf(h.stderr, "🚀 %s\n", event.Message)
+		case runtime.ProgressTypeStep:
+			fmt.Fprintf(h.stderr, "📍 [%d%%] %s\n", event.Progress, event.Message)
+		case runtime.ProgressTypeComplete:
+			fmt.Fprintf(h.stderr, "✅ %s\n", event.Message)
+		case runtime.ProgressTypeError:
+			fmt.Fprintf(h.stderr, "❌ %s\n", event.Message)
+		}
+	}
+}
+
+func (h *CLIStreamHandler) OnComplete(response *runtime.CompletionResponse) {
+	// Already handled by OnChunk
+}
+
+func (h *CLIStreamHandler) OnError(err error) {
+	fmt.Fprintf(h.stderr, "Error: %v\n", err)
 }
