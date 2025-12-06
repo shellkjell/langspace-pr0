@@ -38,12 +38,12 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
 
 Example:
 ```
-Add token pooling for improved memory efficiency
+Add entity validation for improved error messages
 
-- Implement global token pool
-- Add token release mechanism
-- Update parser to use pooled tokens
-- Add benchmarks for token pooling
+- Add validation rules for agent properties
+- Add validation hooks for custom entities
+- Update error reporting with line/position info
+- Add comprehensive test coverage
 
 Fixes #123
 ```
@@ -62,9 +62,9 @@ make lint          # Run linter
 ## Performance Guidelines
 
 1. **Memory Management**
-   - Use token pooling for frequently allocated objects
    - Minimize allocations in hot paths
    - Profile memory usage for large inputs
+   - Consider pooling strategies when profiling indicates allocation overhead
 
 2. **Parsing Performance**
    - Keep parsing O(n) where possible

@@ -282,10 +282,10 @@ See the [examples/](examples/) directory:
 ```
 langspace/
 ├── cmd/langspace/     # CLI application
-├── internal/pool/     # Token pooling
 ├── pkg/
 │   ├── ast/           # Entity types and interfaces
 │   ├── parser/        # Language parser
+│   ├── slices/        # Generic slice utilities
 │   ├── tokenizer/     # Lexical analysis
 │   ├── validator/     # Entity validation
 │   └── workspace/     # Workspace management

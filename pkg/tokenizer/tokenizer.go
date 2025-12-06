@@ -2,8 +2,6 @@ package tokenizer
 
 import (
 	"unicode"
-
-	"github.com/shellkjell/langspace/internal/pool"
 )
 
 // TokenType represents the type of a token
@@ -42,14 +40,14 @@ type Token struct {
 
 // Tokenizer represents a LangSpace tokenizer
 type Tokenizer struct {
-	pool *pool.TokenPool
+	// Note: pool was removed as it was not being utilized.
+	// If memory optimization becomes necessary for large inputs,
+	// consider implementing string interning or token reuse.
 }
 
 // New creates a new Tokenizer instance
 func New() *Tokenizer {
-	return &Tokenizer{
-		pool: pool.NewTokenPool(),
-	}
+	return &Tokenizer{}
 }
 
 // Tokenize breaks the input string into tokens

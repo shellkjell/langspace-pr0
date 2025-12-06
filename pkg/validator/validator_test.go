@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -59,6 +60,13 @@ func createMCPEntity(name string) ast.Entity {
 func createStepEntity(name string) ast.Entity {
 	entity := ast.NewStepEntity(name)
 	entity.SetProperty("use", ast.ReferenceValue{Type: "agent", Name: "test"})
+	return entity
+}
+
+func createScriptEntity(name string) ast.Entity {
+	entity := ast.NewScriptEntity(name)
+	entity.SetProperty("language", ast.StringValue{Value: "python"})
+	entity.SetProperty("code", ast.StringValue{Value: "print('hello')"})
 	return entity
 }
 
@@ -237,6 +245,52 @@ func TestValidator_ValidateEntity(t *testing.T) {
 			errorMsg:  "step entity must have 'use' property",
 		},
 		{
+			name:      "valid script entity",
+			entity:    createScriptEntity("update-db"),
+			wantError: false,
+		},
+		{
+			name: "script entity with empty name",
+			entity: func() ast.Entity {
+				e := ast.NewScriptEntity("")
+				e.SetProperty("language", ast.StringValue{Value: "python"})
+				e.SetProperty("code", ast.StringValue{Value: "print('hi')"})
+				return e
+			}(),
+			wantError: true,
+			errorMsg:  "script entity must have a name",
+		},
+		{
+			name: "script entity without language",
+			entity: func() ast.Entity {
+				e := ast.NewScriptEntity("test")
+				e.SetProperty("code", ast.StringValue{Value: "print('hi')"})
+				return e
+			}(),
+			wantError: true,
+			errorMsg:  "script entity must have 'language' property",
+		},
+		{
+			name: "script entity without code or path",
+			entity: func() ast.Entity {
+				e := ast.NewScriptEntity("test")
+				e.SetProperty("language", ast.StringValue{Value: "python"})
+				return e
+			}(),
+			wantError: true,
+			errorMsg:  "script entity must have 'code' or 'path' property",
+		},
+		{
+			name: "script entity with path instead of code",
+			entity: func() ast.Entity {
+				e := ast.NewScriptEntity("test")
+				e.SetProperty("language", ast.StringValue{Value: "python"})
+				e.SetProperty("path", ast.StringValue{Value: "/scripts/test.py"})
+				return e
+			}(),
+			wantError: false,
+		},
+		{
 			name: "unknown entity type",
 			entity: func() ast.Entity {
 				return &unknownEntity{name: "test"}
@@ -334,4 +388,67 @@ func (e *unknownEntity) Column() int {
 func (e *unknownEntity) SetLocation(line, column int) {
 	e.line = line
 	e.column = column
+}
+
+func TestValidator_RegisterValidator(t *testing.T) {
+	v := New()
+
+	// Register a custom validator for the unknown entity type
+	customValidatorCalled := false
+	v.RegisterValidator("unknown", func(entity ast.Entity) error {
+		customValidatorCalled = true
+		if entity.Name() == "" {
+			return fmt.Errorf("custom: entity must have a name")
+		}
+		return nil
+	})
+
+	// Test that custom validator is called
+	entity := &unknownEntity{name: "test"}
+	err := v.ValidateEntity(entity)
+	if err != nil {
+		t.Errorf("ValidateEntity() unexpected error = %v", err)
+	}
+	if !customValidatorCalled {
+		t.Error("custom validator was not called")
+	}
+
+	// Test custom validator error
+	entity2 := &unknownEntity{name: ""}
+	err = v.ValidateEntity(entity2)
+	if err == nil {
+		t.Error("expected error from custom validator")
+	}
+	if !strings.Contains(err.Error(), "custom: entity must have a name") {
+		t.Errorf("expected custom error message, got: %v", err)
+	}
+}
+
+func TestValidator_CustomValidatorOverridesBuiltin(t *testing.T) {
+	v := New()
+
+	// Override the built-in file validator
+	v.RegisterValidator("file", func(entity ast.Entity) error {
+		// Custom validation: require a "custom_prop" property
+		if _, ok := entity.GetProperty("custom_prop"); !ok {
+			return fmt.Errorf("file entity must have 'custom_prop' property")
+		}
+		return nil
+	})
+
+	// File with path but no custom_prop should now fail
+	entity := ast.NewFileEntity("test.txt")
+	entity.SetProperty("path", ast.StringValue{Value: "/tmp/test"})
+
+	err := v.ValidateEntity(entity)
+	if err == nil {
+		t.Error("expected error from custom validator")
+	}
+
+	// File with custom_prop should pass
+	entity.SetProperty("custom_prop", ast.StringValue{Value: "value"})
+	err = v.ValidateEntity(entity)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 }

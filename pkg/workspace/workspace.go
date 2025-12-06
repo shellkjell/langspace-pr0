@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/shellkjell/langspace/pkg/ast"
+	"github.com/shellkjell/langspace/pkg/slices"
 	"github.com/shellkjell/langspace/pkg/validator"
 )
 
@@ -186,13 +187,9 @@ func (w *Workspace) GetEntitiesByType(entityType string) []ast.Entity {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	var result []ast.Entity
-	for _, entity := range w.entities {
-		if entity.Type() == entityType {
-			result = append(result, entity)
-		}
-	}
-	return result
+	return slices.Filter(w.entities, func(e ast.Entity) bool {
+		return e.Type() == entityType
+	})
 }
 
 // GetEntityByName returns an entity by type and name
@@ -200,12 +197,9 @@ func (w *Workspace) GetEntityByName(entityType, entityName string) (ast.Entity, 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	for _, entity := range w.entities {
-		if entity.Type() == entityType && entity.Name() == entityName {
-			return entity, true
-		}
-	}
-	return nil, false
+	return slices.Find(w.entities, func(e ast.Entity) bool {
+		return e.Type() == entityType && e.Name() == entityName
+	})
 }
 
 // RemoveEntity removes an entity from the workspace by type and name
@@ -239,15 +233,10 @@ func (w *Workspace) RemoveEntity(entityType, entityName string) error {
 // removeRelationshipsForEntity removes all relationships involving the specified entity
 // Must be called with lock held
 func (w *Workspace) removeRelationshipsForEntity(entityType, entityName string) {
-	var remaining []Relationship
-	for _, rel := range w.relationships {
-		if (rel.SourceType == entityType && rel.SourceName == entityName) ||
-			(rel.TargetType == entityType && rel.TargetName == entityName) {
-			continue
-		}
-		remaining = append(remaining, rel)
-	}
-	w.relationships = remaining
+	w.relationships = slices.Filter(w.relationships, func(rel Relationship) bool {
+		return !((rel.SourceType == entityType && rel.SourceName == entityName) ||
+			(rel.TargetType == entityType && rel.TargetName == entityName))
+	})
 }
 
 // Clear removes all entities from the workspace
@@ -265,36 +254,29 @@ func (w *Workspace) AddRelationship(sourceType, sourceName, targetType, targetNa
 	defer w.mu.Unlock()
 
 	// Validate that source entity exists
-	sourceFound := false
-	for _, entity := range w.entities {
-		if entity.Type() == sourceType && entity.Name() == sourceName {
-			sourceFound = true
-			break
-		}
-	}
-	if !sourceFound {
+	sourceExists := slices.Any(w.entities, func(e ast.Entity) bool {
+		return e.Type() == sourceType && e.Name() == sourceName
+	})
+	if !sourceExists {
 		return fmt.Errorf("source entity not found: %s %q", sourceType, sourceName)
 	}
 
 	// Validate that target entity exists
-	targetFound := false
-	for _, entity := range w.entities {
-		if entity.Type() == targetType && entity.Name() == targetName {
-			targetFound = true
-			break
-		}
-	}
-	if !targetFound {
+	targetExists := slices.Any(w.entities, func(e ast.Entity) bool {
+		return e.Type() == targetType && e.Name() == targetName
+	})
+	if !targetExists {
 		return fmt.Errorf("target entity not found: %s %q", targetType, targetName)
 	}
 
 	// Check for duplicate relationship
-	for _, rel := range w.relationships {
-		if rel.SourceType == sourceType && rel.SourceName == sourceName &&
+	isDuplicate := slices.Any(w.relationships, func(rel Relationship) bool {
+		return rel.SourceType == sourceType && rel.SourceName == sourceName &&
 			rel.TargetType == targetType && rel.TargetName == targetName &&
-			rel.Type == relType {
-			return fmt.Errorf("relationship already exists")
-		}
+			rel.Type == relType
+	})
+	if isDuplicate {
+		return fmt.Errorf("relationship already exists")
 	}
 
 	w.relationships = append(w.relationships, Relationship{
@@ -323,14 +305,10 @@ func (w *Workspace) GetRelationshipsForEntity(entityType, entityName string) []R
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	var result []Relationship
-	for _, rel := range w.relationships {
-		if (rel.SourceType == entityType && rel.SourceName == entityName) ||
-			(rel.TargetType == entityType && rel.TargetName == entityName) {
-			result = append(result, rel)
-		}
-	}
-	return result
+	return slices.Filter(w.relationships, func(rel Relationship) bool {
+		return (rel.SourceType == entityType && rel.SourceName == entityName) ||
+			(rel.TargetType == entityType && rel.TargetName == entityName)
+	})
 }
 
 // GetRelatedEntities returns entities related to the specified entity
@@ -338,28 +316,31 @@ func (w *Workspace) GetRelatedEntities(entityType, entityName string, relType Re
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	var result []ast.Entity
-	for _, rel := range w.relationships {
+	// Find matching relationships
+	matchingRels := slices.Filter(w.relationships, func(rel Relationship) bool {
 		if rel.Type != relType {
-			continue
+			return false
 		}
+		return (rel.SourceType == entityType && rel.SourceName == entityName) ||
+			(rel.TargetType == entityType && rel.TargetName == entityName)
+	})
 
+	// Collect related entities
+	var result []ast.Entity
+	for _, rel := range matchingRels {
 		var targetType, targetName string
 		if rel.SourceType == entityType && rel.SourceName == entityName {
 			targetType = rel.TargetType
 			targetName = rel.TargetName
-		} else if rel.TargetType == entityType && rel.TargetName == entityName {
+		} else {
 			targetType = rel.SourceType
 			targetName = rel.SourceName
-		} else {
-			continue
 		}
 
-		for _, entity := range w.entities {
-			if entity.Type() == targetType && entity.Name() == targetName {
-				result = append(result, entity)
-				break
-			}
+		if entity, found := slices.Find(w.entities, func(e ast.Entity) bool {
+			return e.Type() == targetType && e.Name() == targetName
+		}); found {
+			result = append(result, entity)
 		}
 	}
 
@@ -371,14 +352,15 @@ func (w *Workspace) RemoveRelationship(sourceType, sourceName, targetType, targe
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	for i, rel := range w.relationships {
-		if rel.SourceType == sourceType && rel.SourceName == sourceName &&
+	idx := slices.FindIndex(w.relationships, func(rel Relationship) bool {
+		return rel.SourceType == sourceType && rel.SourceName == sourceName &&
 			rel.TargetType == targetType && rel.TargetName == targetName &&
-			rel.Type == relType {
-			w.relationships = append(w.relationships[:i], w.relationships[i+1:]...)
-			return nil
-		}
+			rel.Type == relType
+	})
+	if idx == -1 {
+		return fmt.Errorf("relationship not found")
 	}
 
-	return fmt.Errorf("relationship not found")
+	w.relationships = append(w.relationships[:idx], w.relationships[idx+1:]...)
+	return nil
 }

@@ -626,3 +626,74 @@ func BenchmarkGetProperty(b *testing.B) {
 		entity.GetProperty("model")
 	}
 }
+
+func TestRegisterEntityType(t *testing.T) {
+	// Create a custom entity type
+	type CustomEntity struct {
+		*BaseEntity
+	}
+
+	// Register the custom entity type
+	RegisterEntityType("custom", func(name string) Entity {
+		return &CustomEntity{BaseEntity: NewBaseEntity("custom", name)}
+	})
+
+	// Test that we can create the custom entity
+	entity, err := NewEntity("custom", "test-custom")
+	if err != nil {
+		t.Fatalf("NewEntity(custom) error = %v", err)
+	}
+	if entity.Type() != "custom" {
+		t.Errorf("entity.Type() = %q, want %q", entity.Type(), "custom")
+	}
+	if entity.Name() != "test-custom" {
+		t.Errorf("entity.Name() = %q, want %q", entity.Name(), "test-custom")
+	}
+
+	// Clean up: remove the custom type (for test isolation)
+	// Note: In a real scenario, you might want to add an UnregisterEntityType function
+}
+
+func TestRegisteredEntityTypes(t *testing.T) {
+	types := RegisteredEntityTypes()
+
+	// Should contain all built-in types
+	expectedTypes := []string{"file", "agent", "tool", "intent", "pipeline", "step", "trigger", "config", "mcp", "script"}
+
+	for _, expected := range expectedTypes {
+		found := false
+		for _, actual := range types {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("RegisteredEntityTypes() missing %q", expected)
+		}
+	}
+}
+
+func TestPropertiesReturnsCopy(t *testing.T) {
+	entity := NewAgentEntity("test")
+	entity.SetProperty("model", StringValue{Value: "gpt-4"})
+
+	// Get properties and modify the returned map
+	props := entity.Properties()
+	props["injected"] = StringValue{Value: "evil"}
+
+	// Original entity should not be affected
+	_, hasInjected := entity.GetProperty("injected")
+	if hasInjected {
+		t.Error("Properties() should return a copy; modification affected the original entity")
+	}
+
+	// Original property should still be there
+	model, hasModel := entity.GetProperty("model")
+	if !hasModel {
+		t.Error("original property 'model' should still exist")
+	}
+	if sv, ok := model.(StringValue); !ok || sv.Value != "gpt-4" {
+		t.Errorf("model = %v, want gpt-4", model)
+	}
+}

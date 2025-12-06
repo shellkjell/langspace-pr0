@@ -57,13 +57,29 @@ type Parser struct {
 	errorRecovery bool
 }
 
+// Option is a functional option for configuring the Parser
+type Option func(*Parser)
+
+// WithTokenizer sets a custom tokenizer for the parser.
+// This supports dependency injection for testing and customization.
+func WithTokenizer(t *tokenizer.Tokenizer) Option {
+	return func(p *Parser) {
+		p.tokenizer = t
+	}
+}
+
 // New creates a new Parser instance with the given input text.
-func New(input string) *Parser {
-	return &Parser{
+// Optional configuration can be provided via functional options.
+func New(input string, opts ...Option) *Parser {
+	p := &Parser{
 		input:         input,
 		tokenizer:     tokenizer.New(),
 		errorRecovery: false,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // WithErrorRecovery enables error recovery mode

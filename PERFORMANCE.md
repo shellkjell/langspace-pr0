@@ -18,13 +18,6 @@ This document outlines the performance characteristics of the LangSpace parser a
 
 ## Component Benchmarks
 
-### Token Pool
-| Operation | Time | Memory | Allocations |
-|-----------|------|--------|-------------|
-| Get/Put | ~23 ns | 24 B | 1 |
-| Get/Put String | ~38 ns | 32 B | 2 |
-| Parallel Access | ~10 ns | 24 B | 1 |
-
 ### AST Operations
 | Operation | Time | Memory | Allocations |
 |-----------|------|--------|-------------|
@@ -39,17 +32,12 @@ This document outlines the performance characteristics of the LangSpace parser a
 
 ## Optimizations Implemented
 
-### 1. Token Pool
-- Implemented a global token pool to reduce memory allocations
-- Tokens are reused across parsing operations
-- Reduces GC pressure and memory fragmentation
-
-### 2. Streamlined Parser
+### 1. Streamlined Parser
 - Single-pass parsing without intermediate token stream
 - Direct string parsing with minimal allocations
 - Efficient error reporting with line and position tracking
 
-### 3. Entity System
+### 2. Entity System
 - Efficient entity type registry
 - Zero-copy string handling where possible
 - Minimal interface overhead
@@ -60,6 +48,7 @@ This document outlines the performance characteristics of the LangSpace parser a
 - Consider using a string intern pool for common strings
 - Investigate reducing per-entity allocation overhead
 - Profile memory usage patterns under heavy load
+- Consider token pooling if allocation overhead becomes significant
 
 ### 2. Parser Performance
 - Consider parallel parsing for very large inputs
@@ -95,7 +84,6 @@ When working with the LangSpace parser and entity system, consider these guideli
 
 2. **Memory Management**
    - Release entities when no longer needed
-   - Use the token pool for custom token handling
    - Consider the entity lifecycle in long-running operations
 
 3. **Error Handling**

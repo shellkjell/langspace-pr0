@@ -56,7 +56,7 @@ file "config.json" contents;  # This is an inline comment
 - Support for multi-line tokens
 
 ### Memory Management
-- Token pooling for efficiency
+- Efficient token representation
 - Minimal allocations
 - Automatic cleanup
 

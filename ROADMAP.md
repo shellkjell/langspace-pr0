@@ -8,7 +8,6 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Basic entity system with File, Agent, and Task types
 - [x] Efficient parser with error reporting
 - [x] Workspace management for entities
-- [x] Token pooling for memory optimization
 - [x] Comprehensive test coverage
 - [x] Validator interface exported for extensibility
 - [x] Line/column error reporting
@@ -18,7 +17,6 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Improved error messages with line/position info
 - [x] Multi-line string support
 - [x] Entity type registry
-- [x] Memory optimization via token pooling
 - [x] Task entity type implementation
 - [x] Flexible agent property validation
 - [x] EntityValidator interface for custom validators
@@ -26,6 +24,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Entity relationships (assigned, depends, produces, consumes)
 - [x] Updated performance benchmarks
 - [x] Script entity type for code-first agent actions (context-efficient)
+- [x] Generic slice utilities package for type-safe collection operations
 
 
 ### Known Issues

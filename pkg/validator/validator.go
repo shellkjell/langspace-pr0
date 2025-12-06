@@ -16,14 +16,15 @@ type EntityValidator interface {
 	ValidateEntity(entity ast.Entity) error
 }
 
+// ValidationFunc is a function that validates a specific entity type.
+type ValidationFunc func(entity ast.Entity) error
+
 // Validator performs entity validation according to LangSpace's type system rules.
 // It can be extended with custom validation rules and error formatting.
 // Validator implements the EntityValidator interface.
 type Validator struct {
-	// Add fields here if needed for future extensions, such as:
-	// - Custom validation rules
-	// - Error message templates
-	// - Validation context
+	// customValidators holds additional validators registered at runtime
+	customValidators map[string]ValidationFunc
 }
 
 // New creates a new Validator instance configured with default validation rules.
@@ -33,7 +34,23 @@ type Validator struct {
 // Returns:
 //   - *Validator: A new validator instance ready to validate entities
 func New() *Validator {
-	return &Validator{}
+	return &Validator{
+		customValidators: make(map[string]ValidationFunc),
+	}
+}
+
+// RegisterValidator registers a custom validation function for a specific entity type.
+// This supports the Open/Closed Principle by allowing extensions without modification.
+//
+// Example:
+//
+//	v := validator.New()
+//	v.RegisterValidator("custom", func(e ast.Entity) error {
+//	    // custom validation logic
+//	    return nil
+//	})
+func (v *Validator) RegisterValidator(entityType string, fn ValidationFunc) {
+	v.customValidators[entityType] = fn
 }
 
 // ValidateEntity validates an entity according to its type-specific rules.
@@ -55,6 +72,12 @@ func (v *Validator) ValidateEntity(entity ast.Entity) error {
 		return fmt.Errorf("entity cannot be nil")
 	}
 
+	// Check for custom validator first
+	if fn, ok := v.customValidators[entity.Type()]; ok {
+		return fn(entity)
+	}
+
+	// Fall back to built-in validators
 	switch entity.Type() {
 	case "file":
 		return v.validateFileEntity(entity)
@@ -74,6 +97,8 @@ func (v *Validator) ValidateEntity(entity ast.Entity) error {
 		return v.validateConfigEntity(entity)
 	case "mcp":
 		return v.validateMCPEntity(entity)
+	case "script":
+		return v.validateScriptEntity(entity)
 	default:
 		return fmt.Errorf("unknown entity type: %s", entity.Type())
 	}
@@ -207,6 +232,28 @@ func (v *Validator) validateMCPEntity(entity ast.Entity) error {
 	_, hasCommand := entity.GetProperty("command")
 	if !hasCommand {
 		return fmt.Errorf("mcp entity must have 'command' property")
+	}
+
+	return nil
+}
+
+// validateScriptEntity validates a script entity
+func (v *Validator) validateScriptEntity(entity ast.Entity) error {
+	if entity.Name() == "" {
+		return fmt.Errorf("script entity must have a name")
+	}
+
+	// Script entities must have a language property
+	_, hasLanguage := entity.GetProperty("language")
+	if !hasLanguage {
+		return fmt.Errorf("script entity must have 'language' property")
+	}
+
+	// Script entities should have either code or a file reference
+	_, hasCode := entity.GetProperty("code")
+	_, hasPath := entity.GetProperty("path")
+	if !hasCode && !hasPath {
+		return fmt.Errorf("script entity must have 'code' or 'path' property")
 	}
 
 	return nil

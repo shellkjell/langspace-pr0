@@ -249,26 +249,26 @@ func BenchmarkTokenizer_Tokenize(b *testing.B) {
 	}
 }
 
-func TestTokenPool(t *testing.T) {
+func TestTokenReuse(t *testing.T) {
 	tokenizer := New()
 
-	// First tokenization should create new tokens
+	// First tokenization
 	input1 := `file "test1.txt" path;`
 	tokens1 := tokenizer.Tokenize(input1)
 	if len(tokens1) != 4 {
 		t.Errorf("Expected 4 tokens, got %d", len(tokens1))
 	}
 
-	// Second tokenization should reuse token pool
+	// Second tokenization with same tokenizer instance
 	input2 := `file "test2.txt" path;`
 	tokens2 := tokenizer.Tokenize(input2)
 	if len(tokens2) != 4 {
 		t.Errorf("Expected 4 tokens, got %d", len(tokens2))
 	}
 
-	// Verify tokens are independent despite pool reuse
+	// Verify tokens are independent across calls
 	if tokens1[1].Value == tokens2[1].Value {
-		t.Error("Token values should be different despite pool reuse")
+		t.Error("Token values should be different between tokenization calls")
 	}
 }
 

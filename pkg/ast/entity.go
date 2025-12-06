@@ -8,8 +8,14 @@ import (
 // It defines the core entity types and their behaviors, supporting the language's
 // type system and validation rules.
 
-// Value represents any value in the AST
+// Value represents any value in the AST.
+// This interface uses a sealed pattern via an unexported marker method,
+// ensuring that only value types defined in this package can implement it.
+// This provides type safety and prevents external packages from creating
+// invalid value types.
 type Value interface {
+	// isValue is an unexported marker method that seals this interface.
+	// Only types in this package can implement Value.
 	isValue()
 }
 
@@ -122,9 +128,17 @@ func NewBaseEntity(entityType, name string) *BaseEntity {
 	}
 }
 
-func (e *BaseEntity) Type() string                      { return e.entityType }
-func (e *BaseEntity) Name() string                      { return e.name }
-func (e *BaseEntity) Properties() map[string]Value      { return e.properties }
+func (e *BaseEntity) Type() string { return e.entityType }
+func (e *BaseEntity) Name() string { return e.name }
+
+// Properties returns a copy of the entity's property map to prevent external mutation.
+func (e *BaseEntity) Properties() map[string]Value {
+	result := make(map[string]Value, len(e.properties))
+	for k, v := range e.properties {
+		result[k] = v
+	}
+	return result
+}
 func (e *BaseEntity) Line() int                         { return e.line }
 func (e *BaseEntity) Column() int                       { return e.column }
 func (e *BaseEntity) SetLocation(line, column int)      { e.line = line; e.column = column }
@@ -281,36 +295,51 @@ func NewScriptEntity(name string) *ScriptEntity {
 	return &ScriptEntity{BaseEntity: NewBaseEntity("script", name)}
 }
 
-// NewEntity creates a new Entity based on the provided type identifier.
-func NewEntity(entityType string, name string) (Entity, error) {
-	switch entityType {
-	case "file":
-		return NewFileEntity(name), nil
-	case "agent":
-		return NewAgentEntity(name), nil
-	case "tool":
-		return NewToolEntity(name), nil
-	case "intent":
-		return NewIntentEntity(name), nil
-	case "pipeline":
-		return NewPipelineEntity(name), nil
-	case "step":
-		return NewStepEntity(name), nil
-	case "trigger":
-		return NewTriggerEntity(name), nil
-	case "config":
-		return NewConfigEntity(), nil
-	case "mcp":
-		return NewMCPEntity(name), nil
-	case "script":
-		return NewScriptEntity(name), nil
-	default:
-		return nil, fmt.Errorf("unknown entity type: %s", entityType)
-	}
+// EntityFactory is a function that creates a new entity of a specific type
+type EntityFactory func(name string) Entity
+
+// entityRegistry holds registered entity types and their factories
+var entityRegistry = map[string]EntityFactory{
+	"file":     func(name string) Entity { return NewFileEntity(name) },
+	"agent":    func(name string) Entity { return NewAgentEntity(name) },
+	"tool":     func(name string) Entity { return NewToolEntity(name) },
+	"intent":   func(name string) Entity { return NewIntentEntity(name) },
+	"pipeline": func(name string) Entity { return NewPipelineEntity(name) },
+	"step":     func(name string) Entity { return NewStepEntity(name) },
+	"trigger":  func(name string) Entity { return NewTriggerEntity(name) },
+	"config":   func(name string) Entity { return NewConfigEntity() },
+	"mcp":      func(name string) Entity { return NewMCPEntity(name) },
+	"script":   func(name string) Entity { return NewScriptEntity(name) },
 }
 
-// Legacy support - keeping old function signature for compatibility
-// Deprecated: Use NewEntity(entityType, name) instead
-func NewEntityLegacy(entityType string) (Entity, error) {
-	return NewEntity(entityType, "")
+// RegisterEntityType registers a new entity type with its factory function.
+// This allows extending the AST with custom entity types without modifying
+// the core package, supporting the Open/Closed Principle.
+//
+// Example:
+//
+//	ast.RegisterEntityType("custom", func(name string) ast.Entity {
+//	    return NewCustomEntity(name)
+//	})
+func RegisterEntityType(entityType string, factory EntityFactory) {
+	entityRegistry[entityType] = factory
+}
+
+// RegisteredEntityTypes returns a list of all registered entity type names.
+func RegisteredEntityTypes() []string {
+	types := make([]string, 0, len(entityRegistry))
+	for t := range entityRegistry {
+		types = append(types, t)
+	}
+	return types
+}
+
+// NewEntity creates a new Entity based on the provided type identifier.
+// It uses the entity registry to support extensibility.
+func NewEntity(entityType string, name string) (Entity, error) {
+	factory, ok := entityRegistry[entityType]
+	if !ok {
+		return nil, fmt.Errorf("unknown entity type: %s", entityType)
+	}
+	return factory(name), nil
 }
