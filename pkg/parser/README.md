@@ -49,7 +49,7 @@ result := p.ParseWithRecovery()
 // Check for errors
 if result.HasErrors() {
     for _, err := range result.Errors {
-        fmt.Printf("Error at line %d, col %d: %s\n", 
+        fmt.Printf("Error at line %d, col %d: %s\n",
             err.Line, err.Column, err.Message)
     }
 }
@@ -107,25 +107,57 @@ result.ErrorString() string   // All errors as semicolon-separated string
 
 ## Syntax Rules
 
-### Entity Declaration
+### Block Entity Declaration (Preferred)
+```langspace
+<entity_type> "<name>" {
+  property1: value1
+  property2: value2
+}
 ```
-<entity_type> "<name_or_path>" <property>;
+
+### Legacy Entity Declaration
+```
+<entity_type> "<name>" <property>;
 ```
 
 ### Comments
-```
+```langspace
 # This is a comment
-file "config.json" contents;  # Inline comment
+agent "validator" {  # Inline comment
+  model: "claude-sonnet-4-20250514"
+}
 ```
 
-### Examples
+### Block Syntax Examples
+```langspace
+file "config.json" {
+  path: "./config/app.json"
+}
+
+agent "reviewer" {
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+  instruction: ```
+    You are a code reviewer.
+  ```
+  tools: [read_file, search_codebase]
+}
+
+script "update-db" {
+  language: "python"
+  runtime: "python3"
+  capabilities: [database]
+  code: ```python
+    import db
+    db.update("table", data)
+  ```
+}
+```
+
+### Legacy Syntax Examples (Backward Compatible)
 ```
 file "config.json" contents;
-file "script.sh" path;
 agent "validator" instruction;
-agent "gpt-4" model;
-task "build" instruction;
-task "backup" schedule;
 ```
 
 ## Best Practices

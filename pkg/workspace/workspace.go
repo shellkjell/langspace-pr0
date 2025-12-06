@@ -1,8 +1,12 @@
 package workspace
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/shellkjell/langspace/pkg/ast"
 	"github.com/shellkjell/langspace/pkg/slices"
@@ -21,6 +25,10 @@ const (
 	HookBeforeRemove HookType = "before_remove"
 	// HookAfterRemove is called after an entity is removed
 	HookAfterRemove HookType = "after_remove"
+	// HookBeforeUpdate is called before an entity is updated
+	HookBeforeUpdate HookType = "before_update"
+	// HookAfterUpdate is called after an entity is updated
+	HookAfterUpdate HookType = "after_update"
 )
 
 // EntityHook is a function called during entity lifecycle events
@@ -50,21 +58,67 @@ type Relationship struct {
 	Type       RelationType // Type of relationship
 }
 
+// EventType defines the type of workspace event
+type EventType string
+
+const (
+	// EventEntityAdded is emitted when an entity is added
+	EventEntityAdded EventType = "entity_added"
+	// EventEntityRemoved is emitted when an entity is removed
+	EventEntityRemoved EventType = "entity_removed"
+	// EventEntityUpdated is emitted when an entity is updated
+	EventEntityUpdated EventType = "entity_updated"
+	// EventRelationshipAdded is emitted when a relationship is added
+	EventRelationshipAdded EventType = "relationship_added"
+	// EventRelationshipRemoved is emitted when a relationship is removed
+	EventRelationshipRemoved EventType = "relationship_removed"
+	// EventWorkspaceCleared is emitted when the workspace is cleared
+	EventWorkspaceCleared EventType = "workspace_cleared"
+)
+
+// Event represents a workspace event
+type Event struct {
+	Type         EventType     // The type of event
+	Entity       ast.Entity    // The entity involved (for entity events)
+	Relationship *Relationship // The relationship involved (for relationship events)
+}
+
+// EventHandler is a function that handles workspace events
+type EventHandler func(event Event)
+
+// EntityVersion represents a historical version of an entity
+type EntityVersion struct {
+	Version   int        // Version number (starts at 1)
+	Entity    ast.Entity // The entity at this version
+	Timestamp int64      // Unix timestamp when this version was created
+}
+
+// entityKey creates a unique key for an entity based on type and name
+func entityKey(entityType, entityName string) string {
+	return entityType + ":" + entityName
+}
+
 // Workspace represents a virtual workspace containing entities
 type Workspace struct {
-	entities      []ast.Entity
-	relationships []Relationship
-	hooks         map[HookType][]EntityHook
-	mu            sync.RWMutex
-	validator     validator.EntityValidator
+	entities          []ast.Entity
+	relationships     []Relationship
+	hooks             map[HookType][]EntityHook
+	eventHandlers     []EventHandler
+	entityVersions    map[string][]EntityVersion // Maps entity key to version history
+	versioningEnabled bool
+	mu                sync.RWMutex
+	validator         validator.EntityValidator
 }
 
 // New creates a new Workspace instance
 func New() *Workspace {
 	return &Workspace{
-		entities:      make([]ast.Entity, 0),
-		relationships: make([]Relationship, 0),
-		hooks:         make(map[HookType][]EntityHook),
+		entities:          make([]ast.Entity, 0),
+		relationships:     make([]Relationship, 0),
+		hooks:             make(map[HookType][]EntityHook),
+		eventHandlers:     make([]EventHandler, 0),
+		entityVersions:    make(map[string][]EntityVersion),
+		versioningEnabled: false,
 	}
 }
 
@@ -76,6 +130,7 @@ type WorkspaceStats struct {
 	ToolEntities       int
 	IntentEntities     int
 	PipelineEntities   int
+	ScriptEntities     int
 	TotalRelationships int
 	TotalHooks         int
 	HasValidator       bool
@@ -111,6 +166,8 @@ func (w *Workspace) Stat() WorkspaceStats {
 			stats.IntentEntities++
 		case "pipeline":
 			stats.PipelineEntities++
+		case "script":
+			stats.ScriptEntities++
 		}
 	}
 
@@ -123,6 +180,71 @@ func (w *Workspace) WithValidator(v validator.EntityValidator) *Workspace {
 	return w
 }
 
+// WithVersioning enables entity version tracking.
+// When enabled, the workspace maintains a history of all entity versions,
+// allowing you to retrieve previous states of entities.
+func (w *Workspace) WithVersioning() *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.versioningEnabled = true
+	return w
+}
+
+// recordVersion stores a new version of an entity if versioning is enabled.
+// Must be called with lock held.
+func (w *Workspace) recordVersion(entity ast.Entity) {
+	if !w.versioningEnabled {
+		return
+	}
+	key := entityKey(entity.Type(), entity.Name())
+	versions := w.entityVersions[key]
+	newVersion := EntityVersion{
+		Version:   len(versions) + 1,
+		Entity:    entity,
+		Timestamp: time.Now().Unix(),
+	}
+	w.entityVersions[key] = append(versions, newVersion)
+}
+
+// GetEntityVersion returns a specific version of an entity.
+// Version numbers start at 1. Returns nil if the version doesn't exist.
+func (w *Workspace) GetEntityVersion(entityType, entityName string, version int) (ast.Entity, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	versions, ok := w.entityVersions[key]
+	if !ok || version < 1 || version > len(versions) {
+		return nil, false
+	}
+	return versions[version-1].Entity, true
+}
+
+// GetEntityVersionCount returns the number of versions for an entity.
+func (w *Workspace) GetEntityVersionCount(entityType, entityName string) int {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	return len(w.entityVersions[key])
+}
+
+// GetEntityHistory returns all versions of an entity in chronological order.
+func (w *Workspace) GetEntityHistory(entityType, entityName string) []EntityVersion {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	key := entityKey(entityType, entityName)
+	versions := w.entityVersions[key]
+	if versions == nil {
+		return nil
+	}
+	// Return a copy
+	result := make([]EntityVersion, len(versions))
+	copy(result, versions)
+	return result
+}
+
 // OnEntityEvent registers a hook for a specific entity lifecycle event
 func (w *Workspace) OnEntityEvent(hookType HookType, hook EntityHook) *Workspace {
 	w.mu.Lock()
@@ -130,6 +252,25 @@ func (w *Workspace) OnEntityEvent(hookType HookType, hook EntityHook) *Workspace
 
 	w.hooks[hookType] = append(w.hooks[hookType], hook)
 	return w
+}
+
+// OnEvent registers an event handler for workspace events.
+// Unlike hooks, event handlers cannot block operations and are called
+// after the operation is complete.
+func (w *Workspace) OnEvent(handler EventHandler) *Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.eventHandlers = append(w.eventHandlers, handler)
+	return w
+}
+
+// emit sends an event to all registered event handlers.
+// This is called after operations complete successfully.
+func (w *Workspace) emit(event Event) {
+	for _, handler := range w.eventHandlers {
+		handler(event)
+	}
 }
 
 // runHooks executes all hooks of a given type for an entity
@@ -165,8 +306,14 @@ func (w *Workspace) AddEntity(entity ast.Entity) error {
 
 	w.entities = append(w.entities, entity)
 
+	// Record version if versioning is enabled
+	w.recordVersion(entity)
+
 	// Run after-add hooks (errors are logged but don't fail the operation)
 	_ = w.runHooks(HookAfterAdd, entity)
+
+	// Emit entity added event
+	w.emit(Event{Type: EventEntityAdded, Entity: entity})
 
 	return nil
 }
@@ -223,11 +370,112 @@ func (w *Workspace) RemoveEntity(entityType, entityName string) error {
 			// Run after-remove hooks
 			_ = w.runHooks(HookAfterRemove, entity)
 
+			// Emit entity removed event
+			w.emit(Event{Type: EventEntityRemoved, Entity: entity})
+
 			return nil
 		}
 	}
 
 	return fmt.Errorf("entity not found: %s %q", entityType, entityName)
+}
+
+// UpdateEntity replaces an existing entity with a new version.
+// The entity must already exist in the workspace.
+// Hooks are called before and after the update.
+func (w *Workspace) UpdateEntity(entity ast.Entity) error {
+	if entity == nil {
+		return fmt.Errorf("cannot update with nil entity")
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Find the existing entity
+	idx := slices.FindIndex(w.entities, func(e ast.Entity) bool {
+		return e.Type() == entity.Type() && e.Name() == entity.Name()
+	})
+	if idx == -1 {
+		return fmt.Errorf("entity not found: %s %q", entity.Type(), entity.Name())
+	}
+
+	// Run before-update hooks
+	if err := w.runHooks(HookBeforeUpdate, entity); err != nil {
+		return err
+	}
+
+	// Validate the new entity if validator is set
+	if w.validator != nil {
+		if err := w.validator.ValidateEntity(entity); err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+	}
+
+	// Replace the entity
+	w.entities[idx] = entity
+
+	// Record version if versioning is enabled
+	w.recordVersion(entity)
+
+	// Run after-update hooks
+	_ = w.runHooks(HookAfterUpdate, entity)
+
+	// Emit entity updated event
+	w.emit(Event{Type: EventEntityUpdated, Entity: entity})
+
+	return nil
+}
+
+// UpsertEntity adds an entity if it doesn't exist, or updates it if it does.
+// This is a convenience method combining AddEntity and UpdateEntity behavior.
+func (w *Workspace) UpsertEntity(entity ast.Entity) error {
+	if entity == nil {
+		return fmt.Errorf("cannot upsert nil entity")
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Check if entity already exists
+	idx := slices.FindIndex(w.entities, func(e ast.Entity) bool {
+		return e.Type() == entity.Type() && e.Name() == entity.Name()
+	})
+
+	if idx >= 0 {
+		// Update existing entity
+		if err := w.runHooks(HookBeforeUpdate, entity); err != nil {
+			return err
+		}
+
+		if w.validator != nil {
+			if err := w.validator.ValidateEntity(entity); err != nil {
+				return fmt.Errorf("validation failed: %w", err)
+			}
+		}
+
+		w.entities[idx] = entity
+		w.recordVersion(entity)
+		_ = w.runHooks(HookAfterUpdate, entity)
+		w.emit(Event{Type: EventEntityUpdated, Entity: entity})
+	} else {
+		// Add new entity
+		if err := w.runHooks(HookBeforeAdd, entity); err != nil {
+			return err
+		}
+
+		if w.validator != nil {
+			if err := w.validator.ValidateEntity(entity); err != nil {
+				return fmt.Errorf("validation failed: %w", err)
+			}
+		}
+
+		w.entities = append(w.entities, entity)
+		w.recordVersion(entity)
+		_ = w.runHooks(HookAfterAdd, entity)
+		w.emit(Event{Type: EventEntityAdded, Entity: entity})
+	}
+
+	return nil
 }
 
 // removeRelationshipsForEntity removes all relationships involving the specified entity
@@ -246,6 +494,9 @@ func (w *Workspace) Clear() {
 
 	w.entities = make([]ast.Entity, 0)
 	w.relationships = make([]Relationship, 0)
+
+	// Emit workspace cleared event
+	w.emit(Event{Type: EventWorkspaceCleared})
 }
 
 // AddRelationship creates a relationship between two entities
@@ -279,13 +530,17 @@ func (w *Workspace) AddRelationship(sourceType, sourceName, targetType, targetNa
 		return fmt.Errorf("relationship already exists")
 	}
 
-	w.relationships = append(w.relationships, Relationship{
+	rel := Relationship{
 		SourceType: sourceType,
 		SourceName: sourceName,
 		TargetType: targetType,
 		TargetName: targetName,
 		Type:       relType,
-	})
+	}
+	w.relationships = append(w.relationships, rel)
+
+	// Emit relationship added event
+	w.emit(Event{Type: EventRelationshipAdded, Relationship: &rel})
 
 	return nil
 }
@@ -361,6 +616,398 @@ func (w *Workspace) RemoveRelationship(sourceType, sourceName, targetType, targe
 		return fmt.Errorf("relationship not found")
 	}
 
+	removedRel := w.relationships[idx]
 	w.relationships = append(w.relationships[:idx], w.relationships[idx+1:]...)
+
+	// Emit relationship removed event
+	w.emit(Event{Type: EventRelationshipRemoved, Relationship: &removedRel})
+
 	return nil
+}
+
+// SerializedProperty represents a property for JSON serialization
+type SerializedProperty struct {
+	Type  string          `json:"type"`
+	Value json.RawMessage `json:"value"`
+}
+
+// SerializedEntity represents an entity for JSON serialization
+type SerializedEntity struct {
+	Type       string                        `json:"type"`
+	Name       string                        `json:"name"`
+	Properties map[string]SerializedProperty `json:"properties"`
+	Metadata   map[string]string             `json:"metadata,omitempty"`
+	Line       int                           `json:"line,omitempty"`
+	Column     int                           `json:"column,omitempty"`
+}
+
+// SerializedRelationship represents a relationship for JSON serialization
+type SerializedRelationship struct {
+	SourceType string       `json:"source_type"`
+	SourceName string       `json:"source_name"`
+	TargetType string       `json:"target_type"`
+	TargetName string       `json:"target_name"`
+	Type       RelationType `json:"type"`
+}
+
+// SerializedWorkspace represents a workspace for JSON serialization
+type SerializedWorkspace struct {
+	Version       int                      `json:"version"`
+	Entities      []SerializedEntity       `json:"entities"`
+	Relationships []SerializedRelationship `json:"relationships"`
+}
+
+// serializeValue converts an ast.Value to a SerializedProperty
+func serializeValue(v ast.Value) (SerializedProperty, error) {
+	var prop SerializedProperty
+	switch val := v.(type) {
+	case ast.StringValue:
+		prop.Type = "string"
+		data, _ := json.Marshal(val.Value)
+		prop.Value = data
+	case ast.NumberValue:
+		prop.Type = "number"
+		data, _ := json.Marshal(val.Value)
+		prop.Value = data
+	case ast.BoolValue:
+		prop.Type = "bool"
+		data, _ := json.Marshal(val.Value)
+		prop.Value = data
+	case ast.ArrayValue:
+		prop.Type = "array"
+		var elements []SerializedProperty
+		for _, elem := range val.Elements {
+			se, err := serializeValue(elem)
+			if err != nil {
+				return prop, err
+			}
+			elements = append(elements, se)
+		}
+		data, _ := json.Marshal(elements)
+		prop.Value = data
+	case ast.ReferenceValue:
+		prop.Type = "reference"
+		data, _ := json.Marshal(map[string]interface{}{
+			"type": val.Type,
+			"name": val.Name,
+			"path": val.Path,
+		})
+		prop.Value = data
+	case ast.VariableValue:
+		prop.Type = "variable"
+		data, _ := json.Marshal(val.Name)
+		prop.Value = data
+	default:
+		return prop, fmt.Errorf("unsupported value type: %T", v)
+	}
+	return prop, nil
+}
+
+// deserializeValue converts a SerializedProperty back to an ast.Value
+func deserializeValue(prop SerializedProperty) (ast.Value, error) {
+	switch prop.Type {
+	case "string":
+		var s string
+		if err := json.Unmarshal(prop.Value, &s); err != nil {
+			return nil, err
+		}
+		return ast.StringValue{Value: s}, nil
+	case "number":
+		var n float64
+		if err := json.Unmarshal(prop.Value, &n); err != nil {
+			return nil, err
+		}
+		return ast.NumberValue{Value: n}, nil
+	case "bool":
+		var b bool
+		if err := json.Unmarshal(prop.Value, &b); err != nil {
+			return nil, err
+		}
+		return ast.BoolValue{Value: b}, nil
+	case "array":
+		var elements []SerializedProperty
+		if err := json.Unmarshal(prop.Value, &elements); err != nil {
+			return nil, err
+		}
+		values := make([]ast.Value, len(elements))
+		for i, elem := range elements {
+			v, err := deserializeValue(elem)
+			if err != nil {
+				return nil, err
+			}
+			values[i] = v
+		}
+		return ast.ArrayValue{Elements: values}, nil
+	case "reference":
+		var ref struct {
+			Type string   `json:"type"`
+			Name string   `json:"name"`
+			Path []string `json:"path"`
+		}
+		if err := json.Unmarshal(prop.Value, &ref); err != nil {
+			return nil, err
+		}
+		return ast.ReferenceValue{Type: ref.Type, Name: ref.Name, Path: ref.Path}, nil
+	case "variable":
+		var name string
+		if err := json.Unmarshal(prop.Value, &name); err != nil {
+			return nil, err
+		}
+		return ast.VariableValue{Name: name}, nil
+	default:
+		return nil, fmt.Errorf("unsupported value type: %s", prop.Type)
+	}
+}
+
+// Serialize converts the workspace to a SerializedWorkspace for JSON export.
+func (w *Workspace) Serialize() (*SerializedWorkspace, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	sw := &SerializedWorkspace{
+		Version:       1,
+		Entities:      make([]SerializedEntity, 0, len(w.entities)),
+		Relationships: make([]SerializedRelationship, 0, len(w.relationships)),
+	}
+
+	for _, entity := range w.entities {
+		se := SerializedEntity{
+			Type:       entity.Type(),
+			Name:       entity.Name(),
+			Properties: make(map[string]SerializedProperty),
+			Metadata:   entity.AllMetadata(),
+			Line:       entity.Line(),
+			Column:     entity.Column(),
+		}
+
+		for key, val := range entity.Properties() {
+			prop, err := serializeValue(val)
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize property %s: %w", key, err)
+			}
+			se.Properties[key] = prop
+		}
+
+		sw.Entities = append(sw.Entities, se)
+	}
+
+	for _, rel := range w.relationships {
+		sw.Relationships = append(sw.Relationships, SerializedRelationship{
+			SourceType: rel.SourceType,
+			SourceName: rel.SourceName,
+			TargetType: rel.TargetType,
+			TargetName: rel.TargetName,
+			Type:       rel.Type,
+		})
+	}
+
+	return sw, nil
+}
+
+// SaveTo writes the workspace to an io.Writer in JSON format.
+func (w *Workspace) SaveTo(writer io.Writer) error {
+	sw, err := w.Serialize()
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(sw)
+}
+
+// SaveToFile writes the workspace to a file in JSON format.
+func (w *Workspace) SaveToFile(path string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	return w.SaveTo(file)
+}
+
+// LoadFrom loads entities and relationships from an io.Reader containing JSON.
+// This clears the existing workspace and replaces it with the loaded data.
+// Hooks and event handlers are NOT loaded - they must be re-registered.
+func (w *Workspace) LoadFrom(reader io.Reader) error {
+	var sw SerializedWorkspace
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(&sw); err != nil {
+		return fmt.Errorf("failed to decode workspace: %w", err)
+	}
+
+	return w.loadFromSerialized(&sw)
+}
+
+// LoadFromFile loads entities and relationships from a JSON file.
+func (w *Workspace) LoadFromFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	return w.LoadFrom(file)
+}
+
+// loadFromSerialized populates the workspace from a SerializedWorkspace.
+func (w *Workspace) loadFromSerialized(sw *SerializedWorkspace) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Clear existing data (but keep hooks and event handlers)
+	w.entities = make([]ast.Entity, 0, len(sw.Entities))
+	w.relationships = make([]Relationship, 0, len(sw.Relationships))
+	w.entityVersions = make(map[string][]EntityVersion)
+
+	// Load entities
+	for _, se := range sw.Entities {
+		entity, err := ast.NewEntity(se.Type, se.Name)
+		if err != nil {
+			return fmt.Errorf("failed to create entity %s/%s: %w", se.Type, se.Name, err)
+		}
+
+		// Set properties
+		for key, prop := range se.Properties {
+			val, err := deserializeValue(prop)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize property %s: %w", key, err)
+			}
+			entity.SetProperty(key, val)
+		}
+
+		// Set metadata
+		for key, value := range se.Metadata {
+			entity.SetMetadata(key, value)
+		}
+
+		// Set location
+		entity.SetLocation(se.Line, se.Column)
+
+		w.entities = append(w.entities, entity)
+
+		// Record version if versioning is enabled
+		if w.versioningEnabled {
+			key := entityKey(entity.Type(), entity.Name())
+			w.entityVersions[key] = []EntityVersion{{
+				Version:   1,
+				Entity:    entity,
+				Timestamp: time.Now().Unix(),
+			}}
+		}
+	}
+
+	// Load relationships
+	for _, sr := range sw.Relationships {
+		w.relationships = append(w.relationships, Relationship{
+			SourceType: sr.SourceType,
+			SourceName: sr.SourceName,
+			TargetType: sr.TargetType,
+			TargetName: sr.TargetName,
+			Type:       sr.Type,
+		})
+	}
+
+	return nil
+}
+
+// Snapshot represents a point-in-time snapshot of the workspace state.
+type Snapshot struct {
+	ID        string               // Unique identifier for the snapshot
+	Timestamp int64                // Unix timestamp when snapshot was created
+	Data      *SerializedWorkspace // The serialized workspace state
+}
+
+// CreateSnapshot creates a point-in-time snapshot of the current workspace state.
+// The snapshot can be restored later to return the workspace to this state.
+func (w *Workspace) CreateSnapshot(id string) (*Snapshot, error) {
+	sw, err := w.Serialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize workspace: %w", err)
+	}
+
+	return &Snapshot{
+		ID:        id,
+		Timestamp: time.Now().Unix(),
+		Data:      sw,
+	}, nil
+}
+
+// RestoreSnapshot restores the workspace to a previous snapshot state.
+// This clears the current workspace and replaces it with the snapshot data.
+// Hooks and event handlers are preserved.
+func (w *Workspace) RestoreSnapshot(snapshot *Snapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("cannot restore nil snapshot")
+	}
+	if snapshot.Data == nil {
+		return fmt.Errorf("snapshot contains no data")
+	}
+	return w.loadFromSerialized(snapshot.Data)
+}
+
+// SnapshotStore manages multiple snapshots for a workspace.
+type SnapshotStore struct {
+	snapshots map[string]*Snapshot
+	mu        sync.RWMutex
+}
+
+// NewSnapshotStore creates a new snapshot store.
+func NewSnapshotStore() *SnapshotStore {
+	return &SnapshotStore{
+		snapshots: make(map[string]*Snapshot),
+	}
+}
+
+// Save stores a snapshot in the store.
+func (ss *SnapshotStore) Save(snapshot *Snapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("cannot save nil snapshot")
+	}
+	if snapshot.ID == "" {
+		return fmt.Errorf("snapshot must have an ID")
+	}
+
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.snapshots[snapshot.ID] = snapshot
+	return nil
+}
+
+// Get retrieves a snapshot by ID.
+func (ss *SnapshotStore) Get(id string) (*Snapshot, bool) {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	snapshot, ok := ss.snapshots[id]
+	return snapshot, ok
+}
+
+// Delete removes a snapshot from the store.
+func (ss *SnapshotStore) Delete(id string) bool {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	_, exists := ss.snapshots[id]
+	if exists {
+		delete(ss.snapshots, id)
+	}
+	return exists
+}
+
+// List returns all snapshot IDs in the store.
+func (ss *SnapshotStore) List() []string {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	ids := make([]string, 0, len(ss.snapshots))
+	for id := range ss.snapshots {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// Count returns the number of snapshots in the store.
+func (ss *SnapshotStore) Count() int {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return len(ss.snapshots)
 }

@@ -28,19 +28,43 @@ if err != nil {
 ## Validation Rules
 
 ### File Entities
-- Must have exactly two properties
-- Path property must be non-empty
-- Property type must be either "path" or "contents"
+- Must have a non-empty name
+- Must have either `path` or `contents` property
 
 ### Agent Entities
-- Must have exactly two properties
-- Name must be non-empty
-- Property must be "instruction", "model", or "check(filename)" format
+- Must have a non-empty name
+- Must have `model` property
 
-### Task Entities
-- Must have exactly two properties
-- Name must be non-empty
-- Property must be "instruction", "schedule", or "priority"
+### Tool Entities
+- Must have a non-empty name
+- Must have either `command` or `function` property
+
+### Intent Entities
+- Must have a non-empty name
+- Must have `use` property referencing an agent
+
+### Pipeline Entities
+- Must have a non-empty name
+
+### Step Entities
+- Must have a non-empty name
+- Must have `use` property
+
+### Trigger Entities
+- Must have a non-empty name
+- Must have `event` or `schedule` property
+
+### Config Entities
+- Must have at least one property (no name required)
+
+### MCP Entities
+- Must have a non-empty name
+- Must have `command` property
+
+### Script Entities
+- Must have a non-empty name
+- Must have `language` property
+- Must have `code` or `path` property
 
 ## Error Messages
 

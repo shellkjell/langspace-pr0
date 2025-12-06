@@ -17,7 +17,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Improved error messages with line/position info
 - [x] Multi-line string support
 - [x] Entity type registry
-- [x] Task entity type implementation
+- [x] Block syntax parsing (full DSL support)
 - [x] Flexible agent property validation
 - [x] EntityValidator interface for custom validators
 - [x] Single-line comment support (# comments)
@@ -25,6 +25,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Updated performance benchmarks
 - [x] Script entity type for code-first agent actions (context-efficient)
 - [x] Generic slice utilities package for type-safe collection operations
+- [x] All core entity types: file, agent, tool, intent, pipeline, step, trigger, config, mcp, script
 
 
 ### Known Issues
@@ -41,7 +42,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Verify and update performance claims
 
 ### 2. Core Implementation Alignment
-- [x] Implement Task entity type (as promised in PRD)
+- [x] Block syntax parsing with full DSL support
 - [x] Move validator interface to validator package
 - [x] Implement comprehensive error reporting with line/column info
 - [ ] Add proper authentication/authorization mechanisms
@@ -52,10 +53,10 @@ This document outlines the planned development roadmap for the LangSpace project
 ### 1. Entity System Enhancements
 - [x] Add support for entity relationships
 - [x] Implement entity validation hooks
-- [ ] Implement pluggable entity type system
+- [x] Implement pluggable entity type system (RegisterEntityType, RegisterValidator)
 - [x] Add entity metadata support
-- [ ] Create entity event system
-- [ ] Support entity versioning
+- [x] Create entity event system
+- [x] Support entity versioning (WithVersioning, GetEntityVersion, GetEntityHistory)
 
 ### 2. Script Execution Runtime
 - [ ] Implement sandboxed Python script execution
@@ -72,11 +73,11 @@ This document outlines the planned development roadmap for the LangSpace project
 - [ ] Support for custom entity types
 
 ### 4. Workspace Features
-- [ ] Add workspace persistence
-- [ ] Implement workspace snapshots
+- [x] Add workspace persistence (SaveTo/LoadFrom, SaveToFile/LoadFromFile)
+- [x] Implement workspace snapshots (CreateSnapshot, RestoreSnapshot, SnapshotStore)
 - [x] Add entity search/query capabilities
 - [ ] Support workspace configuration
-- [ ] Add workspace events
+- [x] Add workspace events
 
 ### 5. Architecture Improvements
 - [ ] Reorganize package structure

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -654,4 +655,1123 @@ func TestWorkspace_Stats_WithHooks(t *testing.T) {
 	if stats.TotalHooks != 3 {
 		t.Errorf("Expected 3 hooks, got %d", stats.TotalHooks)
 	}
+}
+
+func TestWorkspace_UpdateEntity(t *testing.T) {
+	t.Run("update_existing_entity", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		// Create updated version
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path/to/test.txt"})
+
+		err := w.UpdateEntity(updated)
+		if err != nil {
+			t.Errorf("UpdateEntity() error = %v", err)
+		}
+
+		// Verify entity was updated
+		entity, found := w.GetEntityByName("file", "test.txt")
+		if !found {
+			t.Fatal("Entity should exist after update")
+		}
+		path, _ := entity.GetProperty("path")
+		if path.(ast.StringValue).Value != "/new/path/to/test.txt" {
+			t.Errorf("Property not updated: got %v", path)
+		}
+	})
+
+	t.Run("update_nonexistent_entity", func(t *testing.T) {
+		w := New()
+		entity := createFileEntity("test.txt")
+
+		err := w.UpdateEntity(entity)
+		if err == nil {
+			t.Error("UpdateEntity() should fail for nonexistent entity")
+		}
+	})
+
+	t.Run("update_nil_entity", func(t *testing.T) {
+		w := New()
+
+		err := w.UpdateEntity(nil)
+		if err == nil {
+			t.Error("UpdateEntity() should fail for nil entity")
+		}
+	})
+
+	t.Run("update_with_hooks", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		beforeCalled := false
+		afterCalled := false
+
+		w.OnEntityEvent(HookBeforeUpdate, func(entity ast.Entity) error {
+			beforeCalled = true
+			return nil
+		})
+		w.OnEntityEvent(HookAfterUpdate, func(entity ast.Entity) error {
+			afterCalled = true
+			return nil
+		})
+
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+
+		err := w.UpdateEntity(updated)
+		if err != nil {
+			t.Errorf("UpdateEntity() error = %v", err)
+		}
+
+		if !beforeCalled {
+			t.Error("Before-update hook was not called")
+		}
+		if !afterCalled {
+			t.Error("After-update hook was not called")
+		}
+	})
+
+	t.Run("before_update_hook_blocks", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		w.OnEntityEvent(HookBeforeUpdate, func(entity ast.Entity) error {
+			return fmt.Errorf("update blocked")
+		})
+
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+
+		err := w.UpdateEntity(updated)
+		if err == nil {
+			t.Error("UpdateEntity() should fail due to hook")
+		}
+
+		// Entity should have original value
+		entity, _ := w.GetEntityByName("file", "test.txt")
+		path, _ := entity.GetProperty("path")
+		if path.(ast.StringValue).Value != "/path/to/test.txt" {
+			t.Error("Entity should not be updated when hook fails")
+		}
+	})
+
+	t.Run("update_with_validator", func(t *testing.T) {
+		w := New().WithValidator(validator.New())
+		original := createAgentEntity("assistant")
+		w.AddEntity(original)
+
+		// Create invalid entity (missing required model)
+		invalid, _ := ast.NewEntity("agent", "assistant")
+		// Don't set model property
+
+		err := w.UpdateEntity(invalid)
+		if err == nil {
+			t.Error("UpdateEntity() should fail validation")
+		}
+	})
+}
+
+func TestWorkspace_UpsertEntity(t *testing.T) {
+	t.Run("upsert_adds_new_entity", func(t *testing.T) {
+		w := New()
+		entity := createFileEntity("test.txt")
+
+		err := w.UpsertEntity(entity)
+		if err != nil {
+			t.Errorf("UpsertEntity() error = %v", err)
+		}
+
+		if len(w.GetEntities()) != 1 {
+			t.Errorf("Expected 1 entity, got %d", len(w.GetEntities()))
+		}
+	})
+
+	t.Run("upsert_updates_existing_entity", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		// Create updated version
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/updated/path"})
+
+		err := w.UpsertEntity(updated)
+		if err != nil {
+			t.Errorf("UpsertEntity() error = %v", err)
+		}
+
+		// Should still have only 1 entity
+		if len(w.GetEntities()) != 1 {
+			t.Errorf("Expected 1 entity after upsert, got %d", len(w.GetEntities()))
+		}
+
+		// Verify entity was updated
+		entity, found := w.GetEntityByName("file", "test.txt")
+		if !found {
+			t.Fatal("Entity should exist after upsert")
+		}
+		path, _ := entity.GetProperty("path")
+		if path.(ast.StringValue).Value != "/updated/path" {
+			t.Errorf("Property not updated: got %v", path)
+		}
+	})
+
+	t.Run("upsert_nil_entity", func(t *testing.T) {
+		w := New()
+
+		err := w.UpsertEntity(nil)
+		if err == nil {
+			t.Error("UpsertEntity() should fail for nil entity")
+		}
+	})
+
+	t.Run("upsert_add_calls_add_hooks", func(t *testing.T) {
+		w := New()
+		beforeAddCalled := false
+		afterAddCalled := false
+
+		w.OnEntityEvent(HookBeforeAdd, func(entity ast.Entity) error {
+			beforeAddCalled = true
+			return nil
+		})
+		w.OnEntityEvent(HookAfterAdd, func(entity ast.Entity) error {
+			afterAddCalled = true
+			return nil
+		})
+
+		entity := createFileEntity("test.txt")
+		w.UpsertEntity(entity)
+
+		if !beforeAddCalled {
+			t.Error("Before-add hook should be called for new entity")
+		}
+		if !afterAddCalled {
+			t.Error("After-add hook should be called for new entity")
+		}
+	})
+
+	t.Run("upsert_update_calls_update_hooks", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		beforeUpdateCalled := false
+		afterUpdateCalled := false
+
+		w.OnEntityEvent(HookBeforeUpdate, func(entity ast.Entity) error {
+			beforeUpdateCalled = true
+			return nil
+		})
+		w.OnEntityEvent(HookAfterUpdate, func(entity ast.Entity) error {
+			afterUpdateCalled = true
+			return nil
+		})
+
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+		w.UpsertEntity(updated)
+
+		if !beforeUpdateCalled {
+			t.Error("Before-update hook should be called for existing entity")
+		}
+		if !afterUpdateCalled {
+			t.Error("After-update hook should be called for existing entity")
+		}
+	})
+}
+
+func TestWorkspace_Events(t *testing.T) {
+	t.Run("entity_added_event", func(t *testing.T) {
+		w := New()
+		var receivedEvent Event
+
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		entity := createFileEntity("test.txt")
+		w.AddEntity(entity)
+
+		if receivedEvent.Type != EventEntityAdded {
+			t.Errorf("Expected EventEntityAdded, got %v", receivedEvent.Type)
+		}
+		if receivedEvent.Entity == nil || receivedEvent.Entity.Name() != "test.txt" {
+			t.Error("Event should contain the added entity")
+		}
+	})
+
+	t.Run("entity_removed_event", func(t *testing.T) {
+		w := New()
+		entity := createFileEntity("test.txt")
+		w.AddEntity(entity)
+
+		var receivedEvent Event
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		w.RemoveEntity("file", "test.txt")
+
+		if receivedEvent.Type != EventEntityRemoved {
+			t.Errorf("Expected EventEntityRemoved, got %v", receivedEvent.Type)
+		}
+		if receivedEvent.Entity == nil || receivedEvent.Entity.Name() != "test.txt" {
+			t.Error("Event should contain the removed entity")
+		}
+	})
+
+	t.Run("entity_updated_event", func(t *testing.T) {
+		w := New()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		var receivedEvent Event
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+		w.UpdateEntity(updated)
+
+		if receivedEvent.Type != EventEntityUpdated {
+			t.Errorf("Expected EventEntityUpdated, got %v", receivedEvent.Type)
+		}
+		if receivedEvent.Entity == nil || receivedEvent.Entity.Name() != "test.txt" {
+			t.Error("Event should contain the updated entity")
+		}
+	})
+
+	t.Run("workspace_cleared_event", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		var receivedEvent Event
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		w.Clear()
+
+		if receivedEvent.Type != EventWorkspaceCleared {
+			t.Errorf("Expected EventWorkspaceCleared, got %v", receivedEvent.Type)
+		}
+	})
+
+	t.Run("relationship_added_event", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+
+		var receivedEvent Event
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		if receivedEvent.Type != EventRelationshipAdded {
+			t.Errorf("Expected EventRelationshipAdded, got %v", receivedEvent.Type)
+		}
+		if receivedEvent.Relationship == nil {
+			t.Error("Event should contain the added relationship")
+		}
+		if receivedEvent.Relationship.SourceName != "assistant" {
+			t.Errorf("Relationship source should be 'assistant', got %s", receivedEvent.Relationship.SourceName)
+		}
+	})
+
+	t.Run("relationship_removed_event", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		var receivedEvent Event
+		w.OnEvent(func(event Event) {
+			receivedEvent = event
+		})
+
+		w.RemoveRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		if receivedEvent.Type != EventRelationshipRemoved {
+			t.Errorf("Expected EventRelationshipRemoved, got %v", receivedEvent.Type)
+		}
+		if receivedEvent.Relationship == nil {
+			t.Error("Event should contain the removed relationship")
+		}
+	})
+
+	t.Run("multiple_event_handlers", func(t *testing.T) {
+		w := New()
+		callCount := 0
+
+		w.OnEvent(func(event Event) {
+			callCount++
+		})
+		w.OnEvent(func(event Event) {
+			callCount++
+		})
+
+		w.AddEntity(createFileEntity("test.txt"))
+
+		if callCount != 2 {
+			t.Errorf("Expected 2 event handler calls, got %d", callCount)
+		}
+	})
+
+	t.Run("events_track_all_operations", func(t *testing.T) {
+		w := New()
+		events := make([]EventType, 0)
+
+		w.OnEvent(func(event Event) {
+			events = append(events, event.Type)
+		})
+
+		// Perform various operations
+		w.AddEntity(createFileEntity("file1.txt"))
+		w.AddEntity(createAgentEntity("agent1"))
+		w.AddRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
+
+		updated, _ := ast.NewEntity("file", "file1.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+		w.UpdateEntity(updated)
+
+		w.RemoveRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
+		w.RemoveEntity("file", "file1.txt")
+		w.Clear()
+
+		expectedEvents := []EventType{
+			EventEntityAdded,         // file1.txt
+			EventEntityAdded,         // agent1
+			EventRelationshipAdded,   // relationship
+			EventEntityUpdated,       // file1.txt update
+			EventRelationshipRemoved, // relationship
+			EventEntityRemoved,       // file1.txt
+			EventWorkspaceCleared,    // clear
+		}
+
+		if len(events) != len(expectedEvents) {
+			t.Errorf("Expected %d events, got %d", len(expectedEvents), len(events))
+		}
+
+		for i, expected := range expectedEvents {
+			if i < len(events) && events[i] != expected {
+				t.Errorf("Event %d: expected %v, got %v", i, expected, events[i])
+			}
+		}
+	})
+
+	t.Run("upsert_emits_correct_event", func(t *testing.T) {
+		w := New()
+		events := make([]EventType, 0)
+
+		w.OnEvent(func(event Event) {
+			events = append(events, event.Type)
+		})
+
+		// First upsert should add
+		entity := createFileEntity("test.txt")
+		w.UpsertEntity(entity)
+
+		if len(events) != 1 || events[0] != EventEntityAdded {
+			t.Error("First upsert should emit EntityAdded event")
+		}
+
+		// Second upsert should update
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
+		w.UpsertEntity(updated)
+
+		if len(events) != 2 || events[1] != EventEntityUpdated {
+			t.Error("Second upsert should emit EntityUpdated event")
+		}
+	})
+}
+
+func TestWorkspace_Versioning(t *testing.T) {
+	t.Run("versioning_disabled_by_default", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		count := w.GetEntityVersionCount("file", "test.txt")
+		if count != 0 {
+			t.Errorf("Expected 0 versions when versioning disabled, got %d", count)
+		}
+	})
+
+	t.Run("versioning_tracks_add", func(t *testing.T) {
+		w := New().WithVersioning()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		count := w.GetEntityVersionCount("file", "test.txt")
+		if count != 1 {
+			t.Errorf("Expected 1 version after add, got %d", count)
+		}
+
+		entity, found := w.GetEntityVersion("file", "test.txt", 1)
+		if !found {
+			t.Fatal("Version 1 should exist")
+		}
+		if entity.Name() != "test.txt" {
+			t.Errorf("Expected entity name 'test.txt', got %s", entity.Name())
+		}
+	})
+
+	t.Run("versioning_tracks_update", func(t *testing.T) {
+		w := New().WithVersioning()
+		original := createFileEntity("test.txt")
+		w.AddEntity(original)
+
+		// Update the entity
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/updated/path"})
+		w.UpdateEntity(updated)
+
+		count := w.GetEntityVersionCount("file", "test.txt")
+		if count != 2 {
+			t.Errorf("Expected 2 versions after update, got %d", count)
+		}
+
+		// Check version 1 has original path
+		v1, _ := w.GetEntityVersion("file", "test.txt", 1)
+		path1, _ := v1.GetProperty("path")
+		if path1.(ast.StringValue).Value != "/path/to/test.txt" {
+			t.Errorf("Version 1 should have original path")
+		}
+
+		// Check version 2 has updated path
+		v2, _ := w.GetEntityVersion("file", "test.txt", 2)
+		path2, _ := v2.GetProperty("path")
+		if path2.(ast.StringValue).Value != "/updated/path" {
+			t.Errorf("Version 2 should have updated path")
+		}
+	})
+
+	t.Run("versioning_tracks_upsert", func(t *testing.T) {
+		w := New().WithVersioning()
+
+		// First upsert (add)
+		entity := createFileEntity("test.txt")
+		w.UpsertEntity(entity)
+
+		count := w.GetEntityVersionCount("file", "test.txt")
+		if count != 1 {
+			t.Errorf("Expected 1 version after upsert add, got %d", count)
+		}
+
+		// Second upsert (update)
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/upserted/path"})
+		w.UpsertEntity(updated)
+
+		count = w.GetEntityVersionCount("file", "test.txt")
+		if count != 2 {
+			t.Errorf("Expected 2 versions after upsert update, got %d", count)
+		}
+	})
+
+	t.Run("get_entity_version_invalid", func(t *testing.T) {
+		w := New().WithVersioning()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		// Version 0 doesn't exist
+		_, found := w.GetEntityVersion("file", "test.txt", 0)
+		if found {
+			t.Error("Version 0 should not exist")
+		}
+
+		// Version 2 doesn't exist yet
+		_, found = w.GetEntityVersion("file", "test.txt", 2)
+		if found {
+			t.Error("Version 2 should not exist")
+		}
+
+		// Non-existent entity
+		_, found = w.GetEntityVersion("file", "nonexistent.txt", 1)
+		if found {
+			t.Error("Non-existent entity should not have versions")
+		}
+	})
+
+	t.Run("get_entity_history", func(t *testing.T) {
+		w := New().WithVersioning()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		updated, _ := ast.NewEntity("file", "test.txt")
+		updated.SetProperty("path", ast.StringValue{Value: "/v2/path"})
+		w.UpdateEntity(updated)
+
+		updated2, _ := ast.NewEntity("file", "test.txt")
+		updated2.SetProperty("path", ast.StringValue{Value: "/v3/path"})
+		w.UpdateEntity(updated2)
+
+		history := w.GetEntityHistory("file", "test.txt")
+		if len(history) != 3 {
+			t.Fatalf("Expected 3 versions in history, got %d", len(history))
+		}
+
+		if history[0].Version != 1 || history[1].Version != 2 || history[2].Version != 3 {
+			t.Error("Versions should be numbered 1, 2, 3")
+		}
+
+		// Verify timestamps are set
+		for _, v := range history {
+			if v.Timestamp == 0 {
+				t.Error("Timestamp should be set")
+			}
+		}
+	})
+
+	t.Run("get_entity_history_nonexistent", func(t *testing.T) {
+		w := New().WithVersioning()
+
+		history := w.GetEntityHistory("file", "nonexistent.txt")
+		if history != nil {
+			t.Error("Non-existent entity should have nil history")
+		}
+	})
+
+	t.Run("versioning_multiple_entities", func(t *testing.T) {
+		w := New().WithVersioning()
+
+		w.AddEntity(createFileEntity("file1.txt"))
+		w.AddEntity(createFileEntity("file2.txt"))
+		w.AddEntity(createAgentEntity("agent1"))
+
+		if w.GetEntityVersionCount("file", "file1.txt") != 1 {
+			t.Error("file1.txt should have 1 version")
+		}
+		if w.GetEntityVersionCount("file", "file2.txt") != 1 {
+			t.Error("file2.txt should have 1 version")
+		}
+		if w.GetEntityVersionCount("agent", "agent1") != 1 {
+			t.Error("agent1 should have 1 version")
+		}
+
+		// Update file1 twice
+		for i := 0; i < 2; i++ {
+			updated, _ := ast.NewEntity("file", "file1.txt")
+			updated.SetProperty("path", ast.StringValue{Value: fmt.Sprintf("/v%d", i+2)})
+			w.UpdateEntity(updated)
+		}
+
+		if w.GetEntityVersionCount("file", "file1.txt") != 3 {
+			t.Error("file1.txt should have 3 versions after 2 updates")
+		}
+		if w.GetEntityVersionCount("file", "file2.txt") != 1 {
+			t.Error("file2.txt should still have 1 version")
+		}
+	})
+}
+
+func TestWorkspace_Persistence(t *testing.T) {
+	t.Run("serialize_empty_workspace", func(t *testing.T) {
+		w := New()
+		sw, err := w.Serialize()
+		if err != nil {
+			t.Fatalf("Serialize() error = %v", err)
+		}
+		if sw.Version != 1 {
+			t.Errorf("Expected version 1, got %d", sw.Version)
+		}
+		if len(sw.Entities) != 0 {
+			t.Errorf("Expected 0 entities, got %d", len(sw.Entities))
+		}
+		if len(sw.Relationships) != 0 {
+			t.Errorf("Expected 0 relationships, got %d", len(sw.Relationships))
+		}
+	})
+
+	t.Run("serialize_with_entities", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+
+		sw, err := w.Serialize()
+		if err != nil {
+			t.Fatalf("Serialize() error = %v", err)
+		}
+		if len(sw.Entities) != 2 {
+			t.Errorf("Expected 2 entities, got %d", len(sw.Entities))
+		}
+	})
+
+	t.Run("serialize_with_relationships", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		sw, err := w.Serialize()
+		if err != nil {
+			t.Fatalf("Serialize() error = %v", err)
+		}
+		if len(sw.Relationships) != 1 {
+			t.Errorf("Expected 1 relationship, got %d", len(sw.Relationships))
+		}
+	})
+
+	t.Run("save_and_load_roundtrip", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		// Save to buffer
+		var buf strings.Builder
+		err := w.SaveTo(&buf)
+		if err != nil {
+			t.Fatalf("SaveTo() error = %v", err)
+		}
+
+		// Load into new workspace
+		w2 := New()
+		err = w2.LoadFrom(strings.NewReader(buf.String()))
+		if err != nil {
+			t.Fatalf("LoadFrom() error = %v", err)
+		}
+
+		// Verify entities
+		if len(w2.GetEntities()) != 2 {
+			t.Errorf("Expected 2 entities after load, got %d", len(w2.GetEntities()))
+		}
+
+		// Verify specific entity
+		file, found := w2.GetEntityByName("file", "test.txt")
+		if !found {
+			t.Fatal("File entity not found after load")
+		}
+		path, _ := file.GetProperty("path")
+		if path.(ast.StringValue).Value != "/path/to/test.txt" {
+			t.Errorf("Property not preserved: got %v", path)
+		}
+
+		// Verify relationships
+		if len(w2.GetRelationships()) != 1 {
+			t.Errorf("Expected 1 relationship after load, got %d", len(w2.GetRelationships()))
+		}
+	})
+
+	t.Run("save_and_load_file", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		// Create temp file
+		tmpFile, err := os.CreateTemp("", "workspace_test_*.json")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		tmpPath := tmpFile.Name()
+		tmpFile.Close()
+		defer os.Remove(tmpPath)
+
+		// Save to file
+		err = w.SaveToFile(tmpPath)
+		if err != nil {
+			t.Fatalf("SaveToFile() error = %v", err)
+		}
+
+		// Load from file
+		w2 := New()
+		err = w2.LoadFromFile(tmpPath)
+		if err != nil {
+			t.Fatalf("LoadFromFile() error = %v", err)
+		}
+
+		if len(w2.GetEntities()) != 1 {
+			t.Errorf("Expected 1 entity after load, got %d", len(w2.GetEntities()))
+		}
+	})
+
+	t.Run("load_preserves_metadata", func(t *testing.T) {
+		w := New()
+		entity := createFileEntity("test.txt")
+		entity.SetMetadata("author", "test-user")
+		entity.SetMetadata("version", "1.0")
+		w.AddEntity(entity)
+
+		var buf strings.Builder
+		w.SaveTo(&buf)
+
+		w2 := New()
+		w2.LoadFrom(strings.NewReader(buf.String()))
+
+		loaded, _ := w2.GetEntityByName("file", "test.txt")
+		author, found := loaded.GetMetadata("author")
+		if !found || author != "test-user" {
+			t.Errorf("Metadata not preserved: author = %q", author)
+		}
+	})
+
+	t.Run("load_clears_existing_data", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("existing.txt"))
+
+		// Create workspace with different data
+		w2 := New()
+		w2.AddEntity(createAgentEntity("new-agent"))
+
+		var buf strings.Builder
+		w2.SaveTo(&buf)
+
+		// Load into w - should replace existing data
+		w.LoadFrom(strings.NewReader(buf.String()))
+
+		entities := w.GetEntities()
+		if len(entities) != 1 {
+			t.Fatalf("Expected 1 entity, got %d", len(entities))
+		}
+		if entities[0].Type() != "agent" || entities[0].Name() != "new-agent" {
+			t.Error("Existing data should be replaced by loaded data")
+		}
+	})
+
+	t.Run("load_preserves_hooks", func(t *testing.T) {
+		w := New()
+		hookCalled := false
+		w.OnEntityEvent(HookAfterAdd, func(entity ast.Entity) error {
+			hookCalled = true
+			return nil
+		})
+
+		// Create source workspace
+		w2 := New()
+		w2.AddEntity(createFileEntity("test.txt"))
+
+		var buf strings.Builder
+		w2.SaveTo(&buf)
+
+		// Load into w - hooks should be preserved
+		w.LoadFrom(strings.NewReader(buf.String()))
+
+		// Add a new entity - hook should fire
+		w.AddEntity(createFileEntity("new.txt"))
+		if !hookCalled {
+			t.Error("Hooks should be preserved after load")
+		}
+	})
+
+	t.Run("serialize_various_value_types", func(t *testing.T) {
+		w := New()
+		entity, _ := ast.NewEntity("file", "complex.txt")
+		entity.SetProperty("string_prop", ast.StringValue{Value: "hello"})
+		entity.SetProperty("number_prop", ast.NumberValue{Value: 42.5})
+		entity.SetProperty("bool_prop", ast.BoolValue{Value: true})
+		entity.SetProperty("array_prop", ast.ArrayValue{
+			Elements: []ast.Value{
+				ast.StringValue{Value: "a"},
+				ast.StringValue{Value: "b"},
+			},
+		})
+		entity.SetProperty("ref_prop", ast.ReferenceValue{
+			Type: "agent",
+			Name: "test",
+			Path: []string{"output"},
+		})
+		entity.SetProperty("var_prop", ast.VariableValue{Name: "input"})
+		w.AddEntity(entity)
+
+		var buf strings.Builder
+		err := w.SaveTo(&buf)
+		if err != nil {
+			t.Fatalf("SaveTo() error = %v", err)
+		}
+
+		w2 := New()
+		err = w2.LoadFrom(strings.NewReader(buf.String()))
+		if err != nil {
+			t.Fatalf("LoadFrom() error = %v", err)
+		}
+
+		loaded, _ := w2.GetEntityByName("file", "complex.txt")
+
+		// Verify string
+		strVal, _ := loaded.GetProperty("string_prop")
+		if strVal.(ast.StringValue).Value != "hello" {
+			t.Error("String property not preserved")
+		}
+
+		// Verify number
+		numVal, _ := loaded.GetProperty("number_prop")
+		if numVal.(ast.NumberValue).Value != 42.5 {
+			t.Error("Number property not preserved")
+		}
+
+		// Verify bool
+		boolVal, _ := loaded.GetProperty("bool_prop")
+		if boolVal.(ast.BoolValue).Value != true {
+			t.Error("Bool property not preserved")
+		}
+
+		// Verify array
+		arrVal, _ := loaded.GetProperty("array_prop")
+		arr := arrVal.(ast.ArrayValue)
+		if len(arr.Elements) != 2 {
+			t.Error("Array property not preserved")
+		}
+
+		// Verify reference
+		refVal, _ := loaded.GetProperty("ref_prop")
+		ref := refVal.(ast.ReferenceValue)
+		if ref.Type != "agent" || ref.Name != "test" {
+			t.Error("Reference property not preserved")
+		}
+
+		// Verify variable
+		varVal, _ := loaded.GetProperty("var_prop")
+		if varVal.(ast.VariableValue).Name != "input" {
+			t.Error("Variable property not preserved")
+		}
+	})
+
+	t.Run("load_invalid_json", func(t *testing.T) {
+		w := New()
+		err := w.LoadFrom(strings.NewReader("invalid json"))
+		if err == nil {
+			t.Error("LoadFrom should fail on invalid JSON")
+		}
+	})
+
+	t.Run("load_unknown_entity_type", func(t *testing.T) {
+		w := New()
+		json := `{"version":1,"entities":[{"type":"unknown","name":"test","properties":{}}],"relationships":[]}`
+		err := w.LoadFrom(strings.NewReader(json))
+		if err == nil {
+			t.Error("LoadFrom should fail on unknown entity type")
+		}
+	})
+}
+
+func TestWorkspace_Snapshots(t *testing.T) {
+	t.Run("create_snapshot", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+
+		snapshot, err := w.CreateSnapshot("v1")
+		if err != nil {
+			t.Fatalf("CreateSnapshot() error = %v", err)
+		}
+
+		if snapshot.ID != "v1" {
+			t.Errorf("Snapshot ID should be 'v1', got %s", snapshot.ID)
+		}
+		if snapshot.Timestamp == 0 {
+			t.Error("Snapshot should have a timestamp")
+		}
+		if snapshot.Data == nil {
+			t.Error("Snapshot should have data")
+		}
+		if len(snapshot.Data.Entities) != 1 {
+			t.Errorf("Snapshot should have 1 entity, got %d", len(snapshot.Data.Entities))
+		}
+	})
+
+	t.Run("restore_snapshot", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("original.txt"))
+
+		// Create snapshot
+		snapshot, _ := w.CreateSnapshot("before-changes")
+
+		// Modify workspace
+		w.RemoveEntity("file", "original.txt")
+		w.AddEntity(createAgentEntity("new-agent"))
+
+		// Verify workspace changed
+		if len(w.GetEntitiesByType("file")) != 0 {
+			t.Error("File should be removed")
+		}
+		if len(w.GetEntitiesByType("agent")) != 1 {
+			t.Error("Agent should be added")
+		}
+
+		// Restore snapshot
+		err := w.RestoreSnapshot(snapshot)
+		if err != nil {
+			t.Fatalf("RestoreSnapshot() error = %v", err)
+		}
+
+		// Verify workspace restored
+		files := w.GetEntitiesByType("file")
+		if len(files) != 1 || files[0].Name() != "original.txt" {
+			t.Error("Workspace should be restored to snapshot state")
+		}
+		if len(w.GetEntitiesByType("agent")) != 0 {
+			t.Error("Agent should not exist after restore")
+		}
+	})
+
+	t.Run("restore_nil_snapshot", func(t *testing.T) {
+		w := New()
+		err := w.RestoreSnapshot(nil)
+		if err == nil {
+			t.Error("RestoreSnapshot(nil) should fail")
+		}
+	})
+
+	t.Run("restore_snapshot_nil_data", func(t *testing.T) {
+		w := New()
+		snapshot := &Snapshot{ID: "empty", Timestamp: 1234567890}
+		err := w.RestoreSnapshot(snapshot)
+		if err == nil {
+			t.Error("RestoreSnapshot with nil data should fail")
+		}
+	})
+
+	t.Run("snapshot_preserves_relationships", func(t *testing.T) {
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		w.AddEntity(createAgentEntity("assistant"))
+		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+
+		// Create snapshot
+		snapshot, _ := w.CreateSnapshot("with-rel")
+
+		// Clear workspace
+		w.Clear()
+
+		// Restore
+		w.RestoreSnapshot(snapshot)
+
+		// Verify relationships
+		rels := w.GetRelationships()
+		if len(rels) != 1 {
+			t.Errorf("Expected 1 relationship, got %d", len(rels))
+		}
+	})
+
+	t.Run("multiple_snapshots", func(t *testing.T) {
+		w := New()
+
+		// State 1
+		w.AddEntity(createFileEntity("v1.txt"))
+		snap1, _ := w.CreateSnapshot("v1")
+
+		// State 2
+		w.AddEntity(createFileEntity("v2.txt"))
+		snap2, _ := w.CreateSnapshot("v2")
+
+		// State 3
+		w.AddEntity(createFileEntity("v3.txt"))
+
+		// Restore to v1
+		w.RestoreSnapshot(snap1)
+		if len(w.GetEntities()) != 1 {
+			t.Errorf("After restore to v1, expected 1 entity, got %d", len(w.GetEntities()))
+		}
+
+		// Restore to v2
+		w.RestoreSnapshot(snap2)
+		if len(w.GetEntities()) != 2 {
+			t.Errorf("After restore to v2, expected 2 entities, got %d", len(w.GetEntities()))
+		}
+	})
+}
+
+func TestSnapshotStore(t *testing.T) {
+	t.Run("save_and_get", func(t *testing.T) {
+		store := NewSnapshotStore()
+		w := New()
+		w.AddEntity(createFileEntity("test.txt"))
+		snapshot, _ := w.CreateSnapshot("test")
+
+		err := store.Save(snapshot)
+		if err != nil {
+			t.Fatalf("Save() error = %v", err)
+		}
+
+		retrieved, found := store.Get("test")
+		if !found {
+			t.Fatal("Snapshot should be found")
+		}
+		if retrieved.ID != "test" {
+			t.Errorf("Retrieved snapshot ID should be 'test', got %s", retrieved.ID)
+		}
+	})
+
+	t.Run("save_nil_snapshot", func(t *testing.T) {
+		store := NewSnapshotStore()
+		err := store.Save(nil)
+		if err == nil {
+			t.Error("Save(nil) should fail")
+		}
+	})
+
+	t.Run("save_empty_id", func(t *testing.T) {
+		store := NewSnapshotStore()
+		snapshot := &Snapshot{Timestamp: 123}
+		err := store.Save(snapshot)
+		if err == nil {
+			t.Error("Save with empty ID should fail")
+		}
+	})
+
+	t.Run("get_nonexistent", func(t *testing.T) {
+		store := NewSnapshotStore()
+		_, found := store.Get("nonexistent")
+		if found {
+			t.Error("Non-existent snapshot should not be found")
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		store := NewSnapshotStore()
+		w := New()
+		snapshot, _ := w.CreateSnapshot("to-delete")
+		store.Save(snapshot)
+
+		deleted := store.Delete("to-delete")
+		if !deleted {
+			t.Error("Delete should return true for existing snapshot")
+		}
+
+		_, found := store.Get("to-delete")
+		if found {
+			t.Error("Snapshot should not exist after delete")
+		}
+
+		// Delete non-existent
+		deleted = store.Delete("nonexistent")
+		if deleted {
+			t.Error("Delete should return false for non-existent snapshot")
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		store := NewSnapshotStore()
+		w := New()
+
+		snap1, _ := w.CreateSnapshot("first")
+		snap2, _ := w.CreateSnapshot("second")
+		store.Save(snap1)
+		store.Save(snap2)
+
+		ids := store.List()
+		if len(ids) != 2 {
+			t.Errorf("Expected 2 snapshots, got %d", len(ids))
+		}
+	})
+
+	t.Run("count", func(t *testing.T) {
+		store := NewSnapshotStore()
+		if store.Count() != 0 {
+			t.Error("Empty store should have 0 snapshots")
+		}
+
+		w := New()
+		snap1, _ := w.CreateSnapshot("s1")
+		snap2, _ := w.CreateSnapshot("s2")
+		store.Save(snap1)
+		store.Save(snap2)
+
+		if store.Count() != 2 {
+			t.Errorf("Expected 2 snapshots, got %d", store.Count())
+		}
+	})
 }

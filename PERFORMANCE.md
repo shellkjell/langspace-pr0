@@ -8,27 +8,40 @@ This document outlines the performance characteristics of the LangSpace parser a
 
 | Benchmark | Time | Memory | Allocations |
 |-----------|------|--------|-------------|
-| Small Input (3 entities) | ~594 ns | 1.6 KB | 13 |
-| Large Input (200 entities) | ~27 μs | 103 KB | 222 |
+| Block Syntax (single entity) | ~1.2 μs | 2.7 KB | 20 |
+| Large Input (~40 entities) | ~66 μs | 183 KB | 721 |
 
 ### Performance Characteristics
-- Linear scaling with input size (~134 ns per entity)
-- Memory usage scales linearly (~515 bytes per entity)
-- Allocation count scales linearly (~1 allocation per entity)
+- Linear scaling with input size (~1.6 μs per entity)
+- Memory usage scales linearly (~4.5 KB per entity)
+- Allocation count scales linearly (~18 allocations per entity)
 
 ## Component Benchmarks
 
 ### AST Operations
 | Operation | Time | Memory | Allocations |
 |-----------|------|--------|-------------|
-| NewEntity | ~17 ns | 32 B | 1 |
-| AddProperty | ~64 ns | 64 B | 2 |
+| NewEntity | ~95 ns | 168 B | 4 |
+| SetProperty | ~10 ns | 0 B | 0 |
+| GetProperty | ~7 ns | 0 B | 0 |
 
 ### Workspace Operations
 | Operation | Time | Memory | Allocations |
 |-----------|------|--------|-------------|
-| AddEntity | ~53 ns | 117 B | 1 |
-| GetEntities | ~21 ns | 16 B | 1 |
+| AddEntity | ~41 ns | 82 B | 0 |
+| GetEntities | ~22 ns | 16 B | 1 |
+
+### Tokenizer Operations
+| Operation | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| Tokenize (small) | ~919 ns | 2.7 KB | 6 |
+
+### Slice Operations
+| Operation | Time | Memory | Allocations |
+|-----------|------|--------|-------------|
+| Filter (1000 items) | ~2.1 μs | 8.2 KB | 10 |
+| Map (1000 items) | ~1.4 μs | 8.2 KB | 1 |
+| Find (1000 items) | ~169 ns | 0 B | 0 |
 
 ## Optimizations Implemented
 

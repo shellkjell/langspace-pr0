@@ -31,11 +31,28 @@ for _, token := range tokens {
 
 ## Token Types
 
+### Basic Types
 - `TokenTypeIdentifier`: Entity types, property names, and keywords
 - `TokenTypeString`: String literals (double-quoted)
 - `TokenTypeMultilineString`: Multi-line content (triple backticks)
-- `TokenTypeSemicolon`: Statement terminators
+- `TokenTypeNumber`: Numeric literals (integers and floats)
+- `TokenTypeBoolean`: Boolean literals (`true` / `false`)
+- `TokenTypeSemicolon`: Statement terminators (`;`)
 - `TokenTypeComment`: Single-line comments (starting with `#`)
+
+### Block Syntax Types
+- `TokenTypeLeftBrace`: Opening brace (`{`)
+- `TokenTypeRightBrace`: Closing brace (`}`)
+- `TokenTypeLeftBracket`: Opening bracket (`[`)
+- `TokenTypeRightBracket`: Closing bracket (`]`)
+- `TokenTypeLeftParen`: Opening parenthesis (`(`)
+- `TokenTypeRightParen`: Closing parenthesis (`)`)
+- `TokenTypeColon`: Property separator (`:`)
+- `TokenTypeComma`: List separator (`,`)
+- `TokenTypeDot`: Dot accessor (`.`)
+- `TokenTypeDollar`: Variable prefix (`$`)
+- `TokenTypeEquals`: Assignment operator (`=`)
+- `TokenTypeArrow`: Arrow operator (`=>`)
 
 Note: Whitespace is automatically skipped during tokenization and is not represented as a token type.
 

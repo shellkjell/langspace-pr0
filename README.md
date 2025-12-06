@@ -267,15 +267,17 @@ langspace compile --target python workflow.ls -o workflow.py
 
 See the [examples/](examples/) directory:
 
-- `01-hello-world.ls` — Basic agent definition
-- `02-files.ls` — File declarations and references
-- `03-agents.ls` — Agent configuration options
-- `04-intentions.ls` — Expressing desired outcomes
-- `05-pipelines.ls` — Multi-step workflows
-- `06-tools-mcp.ls` — Tool definitions and MCP integration
-- `07-config.ls` — Global configuration
-- `08-complete-code-review.ls` — Full code review workflow
-- `09-scripts.ls` — Code-first agent actions (context-efficient)
+- `01-hello-world.ls` — Basic agent definition ✓
+- `02-files.ls` — File declarations and references ✓
+- `03-agents.ls` — Agent configuration options ✓
+- `04-intentions.ls` — Expressing desired outcomes *
+- `05-pipelines.ls` — Multi-step workflows *
+- `06-tools-mcp.ls` — Tool definitions and MCP integration *
+- `07-config.ls` — Global configuration *
+- `08-complete-code-review.ls` — Full code review workflow *
+- `09-scripts.ls` — Code-first agent actions (context-efficient) *
+
+> **Note:** Examples marked with ✓ are fully parseable with the current implementation. Examples marked with * demonstrate aspirational syntax for future versions (typed parameters, inline documentation strings, parallel blocks, etc.).
 
 ## Architecture
 
@@ -295,10 +297,12 @@ langspace/
 
 **Current Phase: Foundation**
 
-- [x] Block-based tokenizer
-- [x] Parser for all entity types
-- [x] AST representation
-- [x] Validation framework
+- [x] Block-based tokenizer with full DSL syntax support
+- [x] Parser for all entity types (file, agent, tool, intent, pipeline, step, trigger, config, mcp, script)
+- [x] AST representation with entity metadata and relationships
+- [x] Validation framework with extensible custom validators
+- [x] Workspace management with entity hooks
+- [x] Error recovery parsing with detailed error reporting
 - [ ] LLM integration and execution
 - [ ] Compilation targets
 - [ ] CLI tool
