@@ -28,8 +28,10 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] All core entity types: file, agent, tool, intent, pipeline, step, trigger, config, mcp, script
 
 
-### Known Issues
-- [] Some PRD features still pending (triggers, automation)
+### Known Issues / Limitations
+- [ ] **Nested block parsing not yet supported** — Step entities inside pipeline blocks, and other nested constructs (parallel, branch, loop), require parser enhancement
+- [ ] Some PRD features still pending (triggers, automation, execution)
+- [ ] Only 3 of 9 examples currently parse successfully (01-03)
 - [x] Performance claims verified with current benchmarks
 - [x] Entity relationships implemented
 
@@ -66,17 +68,25 @@ This document outlines the planned development roadmap for the LangSpace project
 
 ### 3. Parser Improvements
 - [x] Add support for comments
+- [ ] **Implement nested block parsing** — Support step/parallel/branch/loop inside pipeline blocks
 - [ ] Implement syntax highlighting
 - [ ] Add source map support
 - [x] Improve error recovery
 - [ ] Support for custom entity types
+- [ ] Handle typed parameters (e.g., `query: string required`)
 
 ### 4. Workspace Features
+> **Note:** Many workspace features are implemented as infrastructure for future phases.
+> They are tested and working but not yet exposed via CLI or used by execution runtime.
+
 - [x] Add workspace persistence (SaveTo/LoadFrom, SaveToFile/LoadFromFile)
 - [x] Implement workspace snapshots (CreateSnapshot, RestoreSnapshot, SnapshotStore)
 - [x] Add entity search/query capabilities
 - [x] Support workspace configuration (Config, WithConfig, limits, constraints)
 - [x] Add workspace events
+- [x] Entity transformation pipeline (for batch processing)
+- [x] Concurrent batch operations (AddEntitiesBatch, etc.)
+- [x] Dependency graph with topological sort
 
 ### 5. Architecture Improvements
 - [ ] Reorganize package structure

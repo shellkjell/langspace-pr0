@@ -267,17 +267,24 @@ langspace compile --target python workflow.ls -o workflow.py
 
 See the [examples/](examples/) directory:
 
-- `01-hello-world.ls` — Basic agent definition ✓
-- `02-files.ls` — File declarations and references ✓
-- `03-agents.ls` — Agent configuration options ✓
-- `04-intentions.ls` — Expressing desired outcomes *
-- `05-pipelines.ls` — Multi-step workflows *
-- `06-tools-mcp.ls` — Tool definitions and MCP integration *
-- `07-config.ls` — Global configuration *
-- `08-complete-code-review.ls` — Full code review workflow *
-- `09-scripts.ls` — Code-first agent actions (context-efficient) *
+| Example | Description | Status |
+|---------|-------------|--------|
+| `01-hello-world.ls` | Basic agent definition | ✅ Parses |
+| `02-files.ls` | File declarations and references | ✅ Parses |
+| `03-agents.ls` | Agent configuration options | ✅ Parses |
+| `04-intentions.ls` | Expressing desired outcomes | 🚧 Aspirational |
+| `05-pipelines.ls` | Multi-step workflows | 🚧 Aspirational |
+| `06-tools-mcp.ls` | Tool definitions and MCP integration | 🚧 Aspirational |
+| `07-config.ls` | Global configuration | 🚧 Aspirational |
+| `08-complete-code-review.ls` | Full code review workflow | 🚧 Aspirational |
+| `09-scripts.ls` | Code-first agent actions | 🚧 Aspirational |
 
-> **Note:** Examples marked with ✓ are fully parseable with the current implementation. Examples marked with * demonstrate aspirational syntax for future versions (typed parameters, inline documentation strings, parallel blocks, etc.).
+> **Current Parser Limitations:** The parser handles flat entity declarations but does not yet support:
+> - Nested blocks (e.g., `step { }` inside `pipeline { }`)
+> - Typed parameters (e.g., `query: string required`)
+> - Special syntax like `parallel { }`, `branch`, `loop`
+>
+> Examples marked as "Aspirational" demonstrate the target syntax for future versions.
 
 ## Architecture
 
@@ -297,15 +304,22 @@ langspace/
 
 **Current Phase: Foundation**
 
-- [x] Block-based tokenizer with full DSL syntax support
-- [x] Parser for all entity types (file, agent, tool, intent, pipeline, step, trigger, config, mcp, script)
-- [x] AST representation with entity metadata and relationships
-- [x] Validation framework with extensible custom validators
-- [x] Workspace management with entity hooks
-- [x] Error recovery parsing with detailed error reporting
-- [ ] LLM integration and execution
-- [ ] Compilation targets
-- [ ] CLI tool
+### ✅ Implemented & Working
+- Block-based tokenizer with DSL syntax support
+- Parser for flat entity declarations (file, agent, tool, intent, pipeline, step, trigger, config, mcp, script)
+- AST representation with entity metadata and relationships
+- Validation framework with extensible custom validators
+- Workspace management with entity hooks, events, snapshots, and persistence
+- Error recovery parsing with detailed line/column error reporting
+- Comprehensive test coverage (100+ tests)
+
+### 🚧 In Progress / Planned
+- Nested block parsing (step inside pipeline, parallel blocks)
+- Typed parameters (`query: string required`)
+- LLM integration and execution runtime
+- Script execution sandbox
+- Compilation targets (Python/LangGraph, TypeScript)
+- Full CLI tool (`langspace run`, `langspace compile`)
 
 See [ROADMAP.md](ROADMAP.md) for the full development plan and [PRD.md](PRD.md) for the product specification.
 

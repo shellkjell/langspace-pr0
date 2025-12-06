@@ -92,6 +92,14 @@ ws := workspace.New() // Uses DefaultConfig()
 
 ## Custom Entity Validators
 
+The workspace supports two validation mechanisms:
+
+1. **`WithValidator(validator.EntityValidator)`** - Use the `validator` package for language-level validation (required properties, type constraints). This validates entities according to LangSpace schema rules.
+
+2. **`RegisterEntityValidator(type, func)`** - Register custom runtime validators for business logic (e.g., "only .go files allowed", "name must match pattern"). These are in addition to the schema validator.
+
+### Registering Custom Validators
+
 Register custom validation functions for specific entity types or globally:
 
 ```go
