@@ -97,6 +97,52 @@ type PropertyAccessValue struct {
 
 func (p PropertyAccessValue) isValue() {}
 
+// MethodCallValue represents a method call on an object (e.g., git.staged_files(), github.pr.comment(output))
+type MethodCallValue struct {
+	Object     Value   // The object being called on (can be PropertyAccessValue or another value)
+	Method     string  // The method name
+	Arguments  []Value // The arguments to the method
+	InlineBody Entity  // Optional inline block (for patterns like pipeline("name") { ... })
+}
+
+func (m MethodCallValue) isValue() {}
+
+// FunctionCallValue represents a function call (e.g., write_file("path", data), print("msg"))
+type FunctionCallValue struct {
+	Function  string  // The function name
+	Arguments []Value // The arguments to the function
+}
+
+func (f FunctionCallValue) isValue() {}
+
+// ComparisonValue represents a comparison expression (e.g., env("DEBUG") == "true")
+type ComparisonValue struct {
+	Left     Value  // Left operand
+	Operator string // "==", "!=", "<", ">", "<=", ">="
+	Right    Value  // Right operand
+}
+
+func (c ComparisonValue) isValue() {}
+
+// BranchValue represents a branch control flow construct
+// e.g., branch step("classify").output.type { "bug" => step "fix" { ... } }
+type BranchValue struct {
+	Condition Value                        // The expression to branch on
+	Cases     map[string]NestedEntityValue // Map of case value to entity
+}
+
+func (b BranchValue) isValue() {}
+
+// LoopValue represents a loop control flow construct
+// e.g., loop max: 3 { ... }
+type LoopValue struct {
+	MaxIterations  int                 // Maximum iterations (from max: N)
+	Body           []NestedEntityValue // The entities inside the loop
+	BreakCondition Value               // Optional break_if condition
+}
+
+func (l LoopValue) isValue() {}
+
 // Entity represents a LangSpace entity, which is the fundamental building block
 // of the language. Each entity has a type and a set of properties that define
 // its behavior and characteristics.
@@ -337,6 +383,7 @@ var entityRegistry = map[string]EntityFactory{
 	"config":   func(name string) Entity { return NewConfigEntity() },
 	"mcp":      func(name string) Entity { return NewMCPEntity(name) },
 	"script":   func(name string) Entity { return NewScriptEntity(name) },
+	"env":      func(name string) Entity { return NewBaseEntity("env", name) },
 }
 
 // RegisterEntityType registers a new entity type with its factory function.

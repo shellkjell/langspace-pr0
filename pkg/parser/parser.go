@@ -264,6 +264,7 @@ func (p *Parser) parseBlockEntity(entityType, name string, line, col int) (ast.E
 // parseProperty parses a property assignment: key: value
 // This also handles typed parameters: key: type required/optional [default] ["description"]
 // And nested entity blocks: step "name" { ... }
+// And control flow: branch expr { ... }, loop max: N { ... }
 func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 	keyTok := p.current()
 	if keyTok.Type != tokenizer.TokenTypeIdentifier {
@@ -275,6 +276,26 @@ func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 	}
 	key := keyTok.Value
 	p.advance()
+
+	// Check for branch control flow: branch expr { "case" => ... }
+	if key == "branch" {
+		branchValue, err := p.parseBranch(keyTok.Line, keyTok.Column)
+		if err != nil {
+			return err
+		}
+		entity.SetProperty(key, branchValue)
+		return nil
+	}
+
+	// Check for loop control flow: loop max: N { ... }
+	if key == "loop" {
+		loopValue, err := p.parseLoop(keyTok.Line, keyTok.Column)
+		if err != nil {
+			return err
+		}
+		entity.SetProperty(key, loopValue)
+		return nil
+	}
 
 	// Check for nested entity block: step "name" { or parallel { etc
 	// Only specific keywords trigger nested entity parsing
@@ -315,14 +336,56 @@ func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 // isNestedEntityKeyword checks if an identifier is a keyword that can start a nested entity block
 func (p *Parser) isNestedEntityKeyword(name string) bool {
 	switch name {
-	case "step", "parallel", "branch", "loop", "handler", "on_success", "on_failure", "on_error":
+	case "step", "parallel", "handler", "on_success", "on_failure", "on_error", "on_complete", "config":
 		return true
 	}
 	return false
 }
 
-// parseValue parses a value (string, number, bool, array, object, reference)
+// parseValue parses a value with optional comparison operators
 func (p *Parser) parseValue() (ast.Value, *ParseError) {
+	left, err := p.parsePrimaryValue()
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for comparison operators
+	tok := p.current()
+	var operator string
+	switch tok.Type {
+	case tokenizer.TokenTypeDoubleEquals:
+		operator = "=="
+	case tokenizer.TokenTypeNotEquals:
+		operator = "!="
+	case tokenizer.TokenTypeLess:
+		operator = "<"
+	case tokenizer.TokenTypeGreater:
+		operator = ">"
+	case tokenizer.TokenTypeLessEquals:
+		operator = "<="
+	case tokenizer.TokenTypeGreaterEquals:
+		operator = ">="
+	default:
+		return left, nil
+	}
+
+	// We have a comparison operator
+	p.advance()
+
+	right, err := p.parsePrimaryValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return ast.ComparisonValue{
+		Left:     left,
+		Operator: operator,
+		Right:    right,
+	}, nil
+}
+
+// parsePrimaryValue parses a primary value (string, number, bool, array, object, reference)
+func (p *Parser) parsePrimaryValue() (ast.Value, *ParseError) {
 	tok := p.current()
 
 	switch tok.Type {
@@ -349,7 +412,7 @@ func (p *Parser) parseValue() (ast.Value, *ParseError) {
 		return ast.BoolValue{Value: tok.Value == "true"}, nil
 
 	case tokenizer.TokenTypeDollar:
-		// Variable reference: $name
+		// Variable reference: $name or $name.property
 		p.advance()
 		nameTok := p.current()
 		if nameTok.Type != tokenizer.TokenTypeIdentifier {
@@ -359,8 +422,30 @@ func (p *Parser) parseValue() (ast.Value, *ParseError) {
 				Message: "expected variable name after $",
 			}
 		}
+		varName := nameTok.Value
 		p.advance()
-		return ast.VariableValue{Name: nameTok.Value}, nil
+
+		// Check for property access: $name.property.subproperty
+		if p.current().Type == tokenizer.TokenTypeDot {
+			path := make([]string, 0)
+			for p.current().Type == tokenizer.TokenTypeDot {
+				p.advance() // consume dot
+				propTok := p.current()
+				if propTok.Type != tokenizer.TokenTypeIdentifier {
+					return nil, &ParseError{
+						Line:    propTok.Line,
+						Column:  propTok.Column,
+						Message: "expected property name after .",
+					}
+				}
+				path = append(path, propTok.Value)
+				p.advance()
+			}
+			// Return as PropertyAccessValue with $ prefix to indicate variable
+			return ast.PropertyAccessValue{Base: "$" + varName, Path: path}, nil
+		}
+
+		return ast.VariableValue{Name: varName}, nil
 
 	case tokenizer.TokenTypeIdentifier:
 		// Could be:
@@ -369,9 +454,14 @@ func (p *Parser) parseValue() (ast.Value, *ParseError) {
 		// 3. An inline type definition: enum ["a", "b"]
 		// 4. A typed block: http { ... } or shell { ... }
 		// 5. A simple identifier used as a value
+		// 6. A function call: write_file("path", data), print("msg")
 		nextTok := p.peek(1)
 		if nextTok.Type == tokenizer.TokenTypeLeftParen {
-			return p.parseReference()
+			// Check if this is a known entity type (reference) or a general function call
+			if p.isEntityType(tok.Value) {
+				return p.parseReference()
+			}
+			return p.parseFunctionCall()
 		}
 		// Check if this is a typed parameter: type required/optional [default] ["description"]
 		// It must have required/optional after the type name
@@ -419,6 +509,31 @@ func (p *Parser) isTypeName(name string) bool {
 		return true
 	}
 	return false
+}
+
+// isEntityType checks if an identifier is a known entity type that takes a reference (single string arg)
+func (p *Parser) isEntityType(name string) bool {
+	switch name {
+	case "agent", "file", "pipeline", "step", "tool", "handler", "intent", "config", "env", "mcp_server", "mcp", "script":
+		return true
+	}
+	return false
+}
+
+// parseFunctionCall parses a function call: identifier(args...)
+func (p *Parser) parseFunctionCall() (ast.Value, *ParseError) {
+	funcTok := p.current()
+	p.advance() // consume identifier
+
+	args, err := p.parseArgumentList()
+	if err != nil {
+		return nil, err
+	}
+
+	return ast.FunctionCallValue{
+		Function:  funcTok.Value,
+		Arguments: args,
+	}, nil
 }
 
 // parseTypedParameter parses a typed parameter declaration:
@@ -582,8 +697,9 @@ func (p *Parser) parseTypedBlock() (ast.Value, *ParseError) {
 	return nestedValue, nil
 }
 
-// parsePropertyAccess parses a property access chain: identifier.property.property
-// e.g., params.location, step("x").output
+// parsePropertyAccess parses a property access chain with optional method calls:
+// identifier.property.property or identifier.method() or identifier.prop.method(args)
+// e.g., params.location, git.staged_files(), github.pr.comment(output)
 func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 	baseTok := p.current()
 	base := baseTok.Value
@@ -591,7 +707,7 @@ func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 
 	path := make([]string, 0)
 
-	// Parse the property chain
+	// Parse the property/method chain
 	for p.current().Type == tokenizer.TokenTypeDot {
 		p.advance() // consume dot
 		propTok := p.current()
@@ -602,11 +718,110 @@ func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 				Message: "expected property name after .",
 			}
 		}
-		path = append(path, propTok.Value)
+		propName := propTok.Value
 		p.advance()
+
+		// Check if this is a method call: identifier()
+		if p.current().Type == tokenizer.TokenTypeLeftParen {
+			// This is a method call
+			args, err := p.parseArgumentList()
+			if err != nil {
+				return nil, err
+			}
+
+			// Create the object that the method is called on
+			var obj ast.Value
+			if len(path) == 0 {
+				obj = ast.StringValue{Value: base}
+			} else {
+				obj = ast.PropertyAccessValue{Base: base, Path: path}
+			}
+
+			result := ast.MethodCallValue{
+				Object:    obj,
+				Method:    propName,
+				Arguments: args,
+			}
+
+			// Check for inline block after method call: method() { ... }
+			if p.current().Type == tokenizer.TokenTypeLeftBrace {
+				nested, nestedErr := p.parseNestedEntity("", 0, 0)
+				if nestedErr != nil {
+					return nil, nestedErr
+				}
+				result.InlineBody = nested.Entity
+			}
+
+			// Check for further property access after method call: method().output
+			if p.current().Type == tokenizer.TokenTypeDot {
+				// Wrap in ReferenceValue-like structure for path access
+				// For now, we'll return as-is since method calls can have further access
+				// This could be enhanced to support chained property access
+			}
+
+			return result, nil
+		}
+
+		path = append(path, propName)
+	}
+
+	// Check for inline block after property access: github.pull_request { ... }
+	if p.current().Type == tokenizer.TokenTypeLeftBrace {
+		// Create a type name from the full path
+		typeName := base
+		if len(path) > 0 {
+			typeName = path[len(path)-1]
+		}
+		nested, err := p.parseNestedEntity(typeName, baseTok.Line, baseTok.Column)
+		if err != nil {
+			return nil, err
+		}
+		// Return as a MethodCallValue-like structure with the property access as object
+		return ast.MethodCallValue{
+			Object:     ast.PropertyAccessValue{Base: base, Path: path[:max(0, len(path)-1)]},
+			Method:     typeName,
+			Arguments:  []ast.Value{},
+			InlineBody: nested.Entity,
+		}, nil
 	}
 
 	return ast.PropertyAccessValue{Base: base, Path: path}, nil
+}
+
+// parseArgumentList parses a function argument list: (arg1, arg2, ...)
+func (p *Parser) parseArgumentList() ([]ast.Value, *ParseError) {
+	if _, err := p.expect(tokenizer.TokenTypeLeftParen); err != nil {
+		return nil, err
+	}
+
+	args := make([]ast.Value, 0)
+
+	for p.current().Type != tokenizer.TokenTypeRightParen {
+		if p.pos >= len(p.tokens) {
+			return nil, &ParseError{
+				Line:    0,
+				Column:  0,
+				Message: "unclosed argument list",
+			}
+		}
+
+		arg, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+
+		// Optional comma
+		if p.current().Type == tokenizer.TokenTypeComma {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(tokenizer.TokenTypeRightParen); err != nil {
+		return nil, err
+	}
+
+	return args, nil
 }
 
 // parseNestedEntity parses a nested entity block like: step "name" { ... } or parallel { ... }
@@ -655,6 +870,182 @@ func (p *Parser) parseNestedEntity(entityType string, line, col int) (ast.Nested
 	return ast.NestedEntityValue{Entity: entity}, nil
 }
 
+// parseBranch parses a branch control flow: branch expr { "case" => step "name" { ... } }
+func (p *Parser) parseBranch(line, col int) (ast.Value, *ParseError) {
+	// Parse the condition expression
+	condition, err := p.parseValue()
+	if err != nil {
+		return nil, err
+	}
+
+	// Expect opening brace
+	if _, err := p.expect(tokenizer.TokenTypeLeftBrace); err != nil {
+		return nil, err
+	}
+
+	cases := make(map[string]ast.NestedEntityValue)
+
+	// Parse case blocks: "value" => step "name" { ... }
+	for p.current().Type != tokenizer.TokenTypeRightBrace {
+		if p.pos >= len(p.tokens) {
+			return nil, &ParseError{
+				Line:    line,
+				Column:  col,
+				Message: "unclosed branch block",
+			}
+		}
+
+		// Expect case value (string)
+		caseTok := p.current()
+		if caseTok.Type != tokenizer.TokenTypeString {
+			return nil, &ParseError{
+				Line:    caseTok.Line,
+				Column:  caseTok.Column,
+				Message: "expected string case value in branch",
+			}
+		}
+		caseValue := caseTok.Value
+		p.advance()
+
+		// Expect arrow =>
+		if _, err := p.expect(tokenizer.TokenTypeArrow); err != nil {
+			return nil, err
+		}
+
+		// Parse the nested entity (step "name" { ... })
+		entityTok := p.current()
+		if entityTok.Type != tokenizer.TokenTypeIdentifier {
+			return nil, &ParseError{
+				Line:    entityTok.Line,
+				Column:  entityTok.Column,
+				Message: "expected entity type after => in branch",
+			}
+		}
+		entityType := entityTok.Value
+		p.advance()
+
+		nestedEntity, err := p.parseNestedEntity(entityType, entityTok.Line, entityTok.Column)
+		if err != nil {
+			return nil, err
+		}
+		cases[caseValue] = nestedEntity
+	}
+
+	// Expect closing brace
+	if _, err := p.expect(tokenizer.TokenTypeRightBrace); err != nil {
+		return nil, err
+	}
+
+	return ast.BranchValue{
+		Condition: condition,
+		Cases:     cases,
+	}, nil
+}
+
+// parseLoop parses a loop control flow: loop max: N { ... }
+func (p *Parser) parseLoop(line, col int) (ast.Value, *ParseError) {
+	maxIterations := 0
+
+	// Check for max: N attribute
+	if p.current().Type == tokenizer.TokenTypeIdentifier && p.current().Value == "max" {
+		p.advance()
+		if _, err := p.expect(tokenizer.TokenTypeColon); err != nil {
+			return nil, err
+		}
+		numTok := p.current()
+		if numTok.Type != tokenizer.TokenTypeNumber {
+			return nil, &ParseError{
+				Line:    numTok.Line,
+				Column:  numTok.Column,
+				Message: "expected number after max:",
+			}
+		}
+		val, _ := strconv.ParseFloat(numTok.Value, 64)
+		maxIterations = int(val)
+		p.advance()
+	}
+
+	// Expect opening brace
+	if _, err := p.expect(tokenizer.TokenTypeLeftBrace); err != nil {
+		return nil, err
+	}
+
+	body := make([]ast.NestedEntityValue, 0)
+	var breakCondition ast.Value
+
+	// Parse loop body
+	for p.current().Type != tokenizer.TokenTypeRightBrace {
+		if p.pos >= len(p.tokens) {
+			return nil, &ParseError{
+				Line:    line,
+				Column:  col,
+				Message: "unclosed loop block",
+			}
+		}
+
+		// Check for special loop keywords
+		tok := p.current()
+		if tok.Type == tokenizer.TokenTypeIdentifier {
+			switch tok.Value {
+			case "break_if":
+				p.advance()
+				if _, err := p.expect(tokenizer.TokenTypeColon); err != nil {
+					return nil, err
+				}
+				cond, err := p.parseValue()
+				if err != nil {
+					return nil, err
+				}
+				breakCondition = cond
+				continue
+			case "set":
+				// Parse set statements: set $varname: value
+				p.advance()
+				// Expect $ for variable
+				if p.current().Type == tokenizer.TokenTypeDollar {
+					p.advance()
+				}
+				// Skip variable name
+				if p.current().Type == tokenizer.TokenTypeIdentifier {
+					p.advance()
+				}
+				// Expect colon
+				if p.current().Type == tokenizer.TokenTypeColon {
+					p.advance()
+				}
+				// Parse the value (this consumes the whole expression)
+				_, err := p.parseValue()
+				if err != nil {
+					return nil, err
+				}
+				continue
+			case "step":
+				p.advance()
+				nestedEntity, err := p.parseNestedEntity("step", tok.Line, tok.Column)
+				if err != nil {
+					return nil, err
+				}
+				body = append(body, nestedEntity)
+				continue
+			}
+		}
+
+		// If not a special keyword, skip unknown tokens
+		p.advance()
+	}
+
+	// Expect closing brace
+	if _, err := p.expect(tokenizer.TokenTypeRightBrace); err != nil {
+		return nil, err
+	}
+
+	return ast.LoopValue{
+		MaxIterations:  maxIterations,
+		Body:           body,
+		BreakCondition: breakCondition,
+	}, nil
+}
+
 // parseReference parses a reference like agent("name") or step("x").output
 func (p *Parser) parseReference() (ast.Value, *ParseError) {
 	typeTok := p.current()
@@ -697,6 +1088,23 @@ func (p *Parser) parseReference() (ast.Value, *ParseError) {
 		}
 		ref.Path = append(ref.Path, pathTok.Value)
 		p.advance()
+	}
+
+	// Check for inline block: reference("name") { ... }
+	// Only allow inline blocks when there's no path (e.g., pipeline("name") { ... })
+	// Not for step("x").output { ... } which doesn't make sense
+	if len(ref.Path) == 0 && p.current().Type == tokenizer.TokenTypeLeftBrace {
+		nested, err := p.parseNestedEntity(ref.Type, typeTok.Line, typeTok.Column)
+		if err != nil {
+			return nil, err
+		}
+		// Return as a MethodCallValue with inline body
+		return ast.MethodCallValue{
+			Object:     ast.StringValue{Value: ref.Type},
+			Method:     ref.Name,
+			Arguments:  []ast.Value{},
+			InlineBody: nested.Entity,
+		}, nil
 	}
 
 	return ref, nil
@@ -745,6 +1153,7 @@ func (p *Parser) parseObject() (ast.Value, *ParseError) {
 	}
 
 	props := make(map[string]ast.Value)
+	var statements []ast.Value
 
 	for p.current().Type != tokenizer.TokenTypeRightBrace {
 		if p.pos >= len(p.tokens) {
@@ -763,6 +1172,20 @@ func (p *Parser) parseObject() (ast.Value, *ParseError) {
 				Message: "expected property name in object",
 			}
 		}
+
+		// Peek ahead to determine if this is a statement expression (identifier.method() or identifier())
+		// vs a key-value pair (key: value)
+		nextTok := p.peek(1)
+		if nextTok.Type == tokenizer.TokenTypeDot || nextTok.Type == tokenizer.TokenTypeLeftParen {
+			// This is a statement expression like github.pr.comment(output) or write_file("path", data)
+			stmtValue, err := p.parseValue()
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmtValue)
+			continue
+		}
+
 		key := keyTok.Value
 		p.advance()
 
@@ -784,6 +1207,11 @@ func (p *Parser) parseObject() (ast.Value, *ParseError) {
 
 	if _, err := p.expect(tokenizer.TokenTypeRightBrace); err != nil {
 		return nil, err
+	}
+
+	// If we have statements, store them in a special property
+	if len(statements) > 0 {
+		props["_statements"] = ast.ArrayValue{Elements: statements}
 	}
 
 	return ast.ObjectValue{Properties: props}, nil

@@ -14,20 +14,26 @@ const (
 	TokenTypeMultilineString
 	TokenTypeComment
 	// New token types for block syntax
-	TokenTypeLeftBrace    // {
-	TokenTypeRightBrace   // }
-	TokenTypeLeftBracket  // [
-	TokenTypeRightBracket // ]
-	TokenTypeLeftParen    // (
-	TokenTypeRightParen   // )
-	TokenTypeColon        // :
-	TokenTypeComma        // ,
-	TokenTypeDot          // .
-	TokenTypeEquals       // =
-	TokenTypeArrow        // =>
-	TokenTypeDollar       // $
-	TokenTypeNumber       // numeric literals
-	TokenTypeBoolean      // true/false
+	TokenTypeLeftBrace     // {
+	TokenTypeRightBrace    // }
+	TokenTypeLeftBracket   // [
+	TokenTypeRightBracket  // ]
+	TokenTypeLeftParen     // (
+	TokenTypeRightParen    // )
+	TokenTypeColon         // :
+	TokenTypeComma         // ,
+	TokenTypeDot           // .
+	TokenTypeEquals        // =
+	TokenTypeArrow         // =>
+	TokenTypeDoubleEquals  // ==
+	TokenTypeNotEquals     // !=
+	TokenTypeLess          // <
+	TokenTypeGreater       // >
+	TokenTypeLessEquals    // <=
+	TokenTypeGreaterEquals // >=
+	TokenTypeDollar        // $
+	TokenTypeNumber        // numeric literals
+	TokenTypeBoolean       // true/false
 )
 
 // Token represents a lexical token
@@ -193,6 +199,66 @@ func (t *Tokenizer) Tokenize(input string) []Token {
 			})
 			i += 2
 			column += 2
+
+		case input[i] == '=' && i+1 < len(input) && input[i+1] == '=':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeDoubleEquals,
+				Value:  "==",
+				Line:   line,
+				Column: column,
+			})
+			i += 2
+			column += 2
+
+		case input[i] == '!' && i+1 < len(input) && input[i+1] == '=':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeNotEquals,
+				Value:  "!=",
+				Line:   line,
+				Column: column,
+			})
+			i += 2
+			column += 2
+
+		case input[i] == '<' && i+1 < len(input) && input[i+1] == '=':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeLessEquals,
+				Value:  "<=",
+				Line:   line,
+				Column: column,
+			})
+			i += 2
+			column += 2
+
+		case input[i] == '>' && i+1 < len(input) && input[i+1] == '=':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeGreaterEquals,
+				Value:  ">=",
+				Line:   line,
+				Column: column,
+			})
+			i += 2
+			column += 2
+
+		case input[i] == '<':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeLess,
+				Value:  "<",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
+
+		case input[i] == '>':
+			tokens = append(tokens, Token{
+				Type:   TokenTypeGreater,
+				Value:  ">",
+				Line:   line,
+				Column: column,
+			})
+			i++
+			column++
 
 		case input[i] == '=':
 			tokens = append(tokens, Token{
@@ -364,6 +430,18 @@ func (t TokenType) String() string {
 		return "EQUALS"
 	case TokenTypeArrow:
 		return "ARROW"
+	case TokenTypeDoubleEquals:
+		return "DOUBLE_EQUALS"
+	case TokenTypeNotEquals:
+		return "NOT_EQUALS"
+	case TokenTypeLess:
+		return "LESS"
+	case TokenTypeGreater:
+		return "GREATER"
+	case TokenTypeLessEquals:
+		return "LESS_EQUALS"
+	case TokenTypeGreaterEquals:
+		return "GREATER_EQUALS"
 	case TokenTypeDollar:
 		return "DOLLAR"
 	case TokenTypeNumber:
