@@ -1,7 +1,7 @@
 # LangSpace
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/shellkjell/langspace-pr0)](https://goreportcard.com/report/github.com/shellkjell/langspace-pr0)
-[![GoDoc](https://godoc.org/github.com/shellkjell/langspace-pr0?status.svg)](https://godoc.org/github.com/shellkjell/langspace-pr0)
+[![Go Report Card](https://goreportcard.com/badge/github.com/shellkjell/langspace)](https://goreportcard.com/report/github.com/shellkjell/langspace)
+[![GoDoc](https://godoc.org/github.com/shellkjell/langspace?status.svg)](https://godoc.org/github.com/shellkjell/langspace)
 [![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE.md)
 
 LangSpace is a declarative language for composing AI agent workflows. It provides a readable, versionable format for defining agents, tools, and multi-step pipelines that can be executed directly or compiled to other targets.

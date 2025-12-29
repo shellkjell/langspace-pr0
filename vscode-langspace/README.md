@@ -1,6 +1,6 @@
 # LangSpace VSCode Extension
 
-Syntax highlighting and language support for [LangSpace](https://github.com/shellkjell/langspace-pr0) files.
+Syntax highlighting and language support for [LangSpace](https://github.com/shellkjell/langspace) files.
 
 ## Features
 
