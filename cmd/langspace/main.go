@@ -1,3 +1,5 @@
+// Package main provides the LangSpace Command Line Interface (CLI).
+// It allows users to parse, run, validate, and compile LangSpace workflows.
 package main
 
 import (

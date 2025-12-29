@@ -1,3 +1,5 @@
+// Package tokenizer implements lexical analysis for the LangSpace language.
+// It converts raw input text into a stream of tokens that can be processed by the parser.
 package tokenizer
 
 import (
@@ -8,32 +10,56 @@ import (
 type TokenType int
 
 const (
+	// TokenTypeIdentifier represents an identifier (e.g., name, type)
 	TokenTypeIdentifier TokenType = iota
+	// TokenTypeString represents a single-line string literal
 	TokenTypeString
+	// TokenTypeSemicolon represents a semicolon (;)
 	TokenTypeSemicolon
+	// TokenTypeMultilineString represents a multiline string literal
 	TokenTypeMultilineString
+	// TokenTypeComment represents a comment (# ...)
 	TokenTypeComment
-	// New token types for block syntax
-	TokenTypeLeftBrace     // {
-	TokenTypeRightBrace    // }
-	TokenTypeLeftBracket   // [
-	TokenTypeRightBracket  // ]
-	TokenTypeLeftParen     // (
-	TokenTypeRightParen    // )
-	TokenTypeColon         // :
-	TokenTypeComma         // ,
-	TokenTypeDot           // .
-	TokenTypeEquals        // =
-	TokenTypeArrow         // =>
-	TokenTypeDoubleEquals  // ==
-	TokenTypeNotEquals     // !=
-	TokenTypeLess          // <
-	TokenTypeGreater       // >
-	TokenTypeLessEquals    // <=
-	TokenTypeGreaterEquals // >=
-	TokenTypeDollar        // $
-	TokenTypeNumber        // numeric literals
-	TokenTypeBoolean       // true/false
+	// TokenTypeLeftBrace represents an opening brace ({)
+	TokenTypeLeftBrace
+	// TokenTypeRightBrace represents a closing brace (})
+	TokenTypeRightBrace
+	// TokenTypeLeftBracket represents an opening bracket ([)
+	TokenTypeLeftBracket
+	// TokenTypeRightBracket represents a closing bracket (])
+	TokenTypeRightBracket
+	// TokenTypeLeftParen represents an opening parenthesis (()
+	TokenTypeLeftParen
+	// TokenTypeRightParen represents a closing parenthesis ())
+	TokenTypeRightParen
+	// TokenTypeColon represents a colon (:)
+	TokenTypeColon
+	// TokenTypeComma represents a comma (,)
+	TokenTypeComma
+	// TokenTypeDot represents a dot (.)
+	TokenTypeDot
+	// TokenTypeEquals represents an equals sign (=)
+	TokenTypeEquals
+	// TokenTypeArrow represents an arrow (=>)
+	TokenTypeArrow
+	// TokenTypeDoubleEquals represents a double equals sign (==)
+	TokenTypeDoubleEquals
+	// TokenTypeNotEquals represents a not equals sign (!=)
+	TokenTypeNotEquals
+	// TokenTypeLess represents a less than sign (<)
+	TokenTypeLess
+	// TokenTypeGreater represents a greater than sign (>)
+	TokenTypeGreater
+	// TokenTypeLessEquals represents a less than or equal sign (<=)
+	TokenTypeLessEquals
+	// TokenTypeGreaterEquals represents a greater than or equal sign (>=)
+	TokenTypeGreaterEquals
+	// TokenTypeDollar represents a dollar sign ($)
+	TokenTypeDollar
+	// TokenTypeNumber represents a numeric literal
+	TokenTypeNumber
+	// TokenTypeBoolean represents a boolean literal (true/false)
+	TokenTypeBoolean
 )
 
 // Token represents a lexical token

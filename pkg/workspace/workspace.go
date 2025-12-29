@@ -1,3 +1,5 @@
+// Package workspace provides a virtual workspace for managing LangSpace entities.
+// It handles entity storage, relationship tracking, lifecycle hooks, and versioning.
 package workspace
 
 import (
