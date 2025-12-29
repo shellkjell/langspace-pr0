@@ -169,12 +169,8 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req *CompletionRequest) (
 	var openaiTools []openaiTool
 	for _, tool := range req.Tools {
 		openaiTools = append(openaiTools, openaiTool{
-			Type: "function",
-			Function: openaiFunction{
-				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters:  tool.Parameters,
-			},
+			Type:     "function",
+			Function: openaiFunction(tool),
 		})
 	}
 

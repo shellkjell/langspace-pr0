@@ -698,7 +698,7 @@ func BenchmarkParser_Parse_BlockSyntax(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p := New(input)
-		p.Parse()
+		_, _ = p.Parse()
 	}
 }
 
@@ -714,7 +714,7 @@ func BenchmarkParser_Parse_Large(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p := New(input)
-		p.Parse()
+		_, _ = p.Parse()
 	}
 }
 

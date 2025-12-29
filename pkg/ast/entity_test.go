@@ -606,7 +606,7 @@ func TestEntity_Location(t *testing.T) {
 
 func BenchmarkNewEntity(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewEntity("agent", "test")
+		_, _ = NewEntity("agent", "test")
 	}
 }
 

@@ -72,7 +72,7 @@ func TestWorkspace_AddEntity(t *testing.T) {
 
 func TestWorkspace_GetEntities(t *testing.T) {
 	w := New()
-	w.AddEntity(createFileEntity("test.txt"))
+	_ = w.AddEntity(createFileEntity("test.txt"))
 
 	entities := w.GetEntities()
 	if len(entities) != 1 {
@@ -86,9 +86,9 @@ func TestWorkspace_GetEntities(t *testing.T) {
 
 func TestWorkspace_GetEntitiesByType(t *testing.T) {
 	w := New()
-	w.AddEntity(createFileEntity("test.txt"))
-	w.AddEntity(createAgentEntity("validator"))
-	w.AddEntity(createToolEntity("linter"))
+	_ = w.AddEntity(createFileEntity("test.txt"))
+	_ = w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createToolEntity("linter"))
 
 	// Test getting file entities
 	fileEntities := w.GetEntitiesByType("file")
@@ -117,8 +117,8 @@ func TestWorkspace_GetEntitiesByType(t *testing.T) {
 
 func TestWorkspace_GetEntityByName(t *testing.T) {
 	w := New()
-	w.AddEntity(createFileEntity("test.txt"))
-	w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createFileEntity("test.txt"))
+	_ = w.AddEntity(createAgentEntity("validator"))
 
 	// Test finding existing entity
 	entity, found := w.GetEntityByName("file", "test.txt")
@@ -138,9 +138,9 @@ func TestWorkspace_GetEntityByName(t *testing.T) {
 
 func TestWorkspace_Clear(t *testing.T) {
 	w := New()
-	w.AddEntity(createFileEntity("test.txt"))
-	w.AddEntity(createAgentEntity("validator"))
-	w.AddEntity(createToolEntity("linter"))
+	_ = w.AddEntity(createFileEntity("test.txt"))
+	_ = w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createToolEntity("linter"))
 
 	// Clear the workspace
 	w.Clear()
@@ -162,7 +162,7 @@ func TestWorkspace_Concurrency(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func(i int) {
 			defer wg.Done()
-			w.AddEntity(createFileEntity(fmt.Sprintf("test%d.txt", i)))
+			_ = w.AddEntity(createFileEntity(fmt.Sprintf("test%d.txt", i)))
 		}(i)
 	}
 	wg.Wait()
@@ -180,13 +180,13 @@ func BenchmarkWorkspace_AddEntity(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 	}
 }
 
 func BenchmarkWorkspace_GetEntities(b *testing.B) {
 	w := New()
-	w.AddEntity(createFileEntity("test.txt"))
+	_ = w.AddEntity(createFileEntity("test.txt"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -292,9 +292,9 @@ func TestWorkspace_Relationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
-	w.AddEntity(createToolEntity("linter"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createToolEntity("linter"))
 
 	// Test adding a valid relationship
 	err := w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
@@ -320,8 +320,8 @@ func TestWorkspace_Relationships(t *testing.T) {
 	}
 
 	// Add more relationships
-	w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
-	w.AddRelationship("agent", "validator", "tool", "linter", RelationTypeAssigned)
+	_ = w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
+	_ = w.AddRelationship("agent", "validator", "tool", "linter", RelationTypeAssigned)
 
 	// Verify stats
 	stats := w.Stat()
@@ -334,11 +334,11 @@ func TestWorkspace_GetRelationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
-	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+	_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
 
 	// Get all relationships
 	relationships := w.GetRelationships()
@@ -358,13 +358,13 @@ func TestWorkspace_GetRelationshipsForEntity(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
-	w.AddEntity(createToolEntity("linter"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createToolEntity("linter"))
 
 	// Add relationships
-	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
-	w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
+	_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+	_ = w.AddRelationship("tool", "linter", "file", "config.json", RelationTypeConsumes)
 
 	// Get relationships for file entity (should have 2)
 	fileRels := w.GetRelationshipsForEntity("file", "config.json")
@@ -383,11 +383,11 @@ func TestWorkspace_GetRelatedEntities(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
-	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+	_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
 
 	// Get related entities from agent perspective
 	related := w.GetRelatedEntities("agent", "validator", RelationTypeAssigned)
@@ -412,11 +412,11 @@ func TestWorkspace_RemoveRelationship(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
-	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+	_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
 
 	// Verify relationship exists
 	if len(w.GetRelationships()) != 1 {
@@ -445,11 +445,11 @@ func TestWorkspace_Clear_WithRelationships(t *testing.T) {
 	w := New()
 
 	// Add entities
-	w.AddEntity(createFileEntity("config.json"))
-	w.AddEntity(createAgentEntity("validator"))
+	_ = w.AddEntity(createFileEntity("config.json"))
+	_ = w.AddEntity(createAgentEntity("validator"))
 
 	// Add relationship
-	w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+	_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
 
 	// Clear workspace
 	w.Clear()
@@ -538,7 +538,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 			return nil
 		})
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		expected := []string{"before1", "before2", "after1"}
 		if len(callOrder) != len(expected) {
@@ -555,7 +555,7 @@ func TestWorkspace_EntityHooks(t *testing.T) {
 func TestWorkspace_RemoveEntity(t *testing.T) {
 	t.Run("remove_existing_entity", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		err := w.RemoveEntity("file", "test.txt")
 		if err != nil {
@@ -579,11 +579,11 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 		w := New()
 
 		// Add entities
-		w.AddEntity(createFileEntity("config.json"))
-		w.AddEntity(createAgentEntity("validator"))
+		_ = w.AddEntity(createFileEntity("config.json"))
+		_ = w.AddEntity(createAgentEntity("validator"))
 
 		// Add relationship
-		w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
+		_ = w.AddRelationship("agent", "validator", "file", "config.json", RelationTypeAssigned)
 
 		// Verify relationship exists
 		if len(w.GetRelationships()) != 1 {
@@ -591,7 +591,7 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 		}
 
 		// Remove entity
-		w.RemoveEntity("file", "config.json")
+		_ = w.RemoveEntity("file", "config.json")
 
 		// Verify relationship is also removed
 		if len(w.GetRelationships()) != 0 {
@@ -613,8 +613,8 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 			return nil
 		})
 
-		w.AddEntity(createFileEntity("test.txt"))
-		w.RemoveEntity("file", "test.txt")
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.RemoveEntity("file", "test.txt")
 
 		if !beforeCalled {
 			t.Error("Before-remove hook was not called")
@@ -631,7 +631,7 @@ func TestWorkspace_RemoveEntity(t *testing.T) {
 			return fmt.Errorf("removal blocked")
 		})
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		err := w.RemoveEntity("file", "test.txt")
 		if err == nil {
@@ -662,7 +662,7 @@ func TestWorkspace_UpdateEntity(t *testing.T) {
 	t.Run("update_existing_entity", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		// Create updated version
 		updated, _ := ast.NewEntity("file", "test.txt")
@@ -706,7 +706,7 @@ func TestWorkspace_UpdateEntity(t *testing.T) {
 	t.Run("update_with_hooks", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		beforeCalled := false
 		afterCalled := false
@@ -739,7 +739,7 @@ func TestWorkspace_UpdateEntity(t *testing.T) {
 	t.Run("before_update_hook_blocks", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		w.OnEntityEvent(HookBeforeUpdate, func(entity ast.Entity) error {
 			return fmt.Errorf("update blocked")
@@ -764,7 +764,7 @@ func TestWorkspace_UpdateEntity(t *testing.T) {
 	t.Run("update_with_validator", func(t *testing.T) {
 		w := New().WithValidator(validator.New())
 		original := createAgentEntity("assistant")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		// Create invalid entity (missing required model)
 		invalid, _ := ast.NewEntity("agent", "assistant")
@@ -795,7 +795,7 @@ func TestWorkspace_UpsertEntity(t *testing.T) {
 	t.Run("upsert_updates_existing_entity", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		// Create updated version
 		updated, _ := ast.NewEntity("file", "test.txt")
@@ -846,7 +846,7 @@ func TestWorkspace_UpsertEntity(t *testing.T) {
 		})
 
 		entity := createFileEntity("test.txt")
-		w.UpsertEntity(entity)
+		_ = w.UpsertEntity(entity)
 
 		if !beforeAddCalled {
 			t.Error("Before-add hook should be called for new entity")
@@ -859,7 +859,7 @@ func TestWorkspace_UpsertEntity(t *testing.T) {
 	t.Run("upsert_update_calls_update_hooks", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		beforeUpdateCalled := false
 		afterUpdateCalled := false
@@ -875,7 +875,7 @@ func TestWorkspace_UpsertEntity(t *testing.T) {
 
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
-		w.UpsertEntity(updated)
+		_ = w.UpsertEntity(updated)
 
 		if !beforeUpdateCalled {
 			t.Error("Before-update hook should be called for existing entity")
@@ -896,7 +896,7 @@ func TestWorkspace_Events(t *testing.T) {
 		})
 
 		entity := createFileEntity("test.txt")
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 
 		if receivedEvent.Type != EventEntityAdded {
 			t.Errorf("Expected EventEntityAdded, got %v", receivedEvent.Type)
@@ -909,14 +909,14 @@ func TestWorkspace_Events(t *testing.T) {
 	t.Run("entity_removed_event", func(t *testing.T) {
 		w := New()
 		entity := createFileEntity("test.txt")
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 
 		var receivedEvent Event
 		w.OnEvent(func(event Event) {
 			receivedEvent = event
 		})
 
-		w.RemoveEntity("file", "test.txt")
+		_ = w.RemoveEntity("file", "test.txt")
 
 		if receivedEvent.Type != EventEntityRemoved {
 			t.Errorf("Expected EventEntityRemoved, got %v", receivedEvent.Type)
@@ -929,7 +929,7 @@ func TestWorkspace_Events(t *testing.T) {
 	t.Run("entity_updated_event", func(t *testing.T) {
 		w := New()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		var receivedEvent Event
 		w.OnEvent(func(event Event) {
@@ -938,7 +938,7 @@ func TestWorkspace_Events(t *testing.T) {
 
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
-		w.UpdateEntity(updated)
+		_ = w.UpdateEntity(updated)
 
 		if receivedEvent.Type != EventEntityUpdated {
 			t.Errorf("Expected EventEntityUpdated, got %v", receivedEvent.Type)
@@ -950,7 +950,7 @@ func TestWorkspace_Events(t *testing.T) {
 
 	t.Run("workspace_cleared_event", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		var receivedEvent Event
 		w.OnEvent(func(event Event) {
@@ -966,15 +966,15 @@ func TestWorkspace_Events(t *testing.T) {
 
 	t.Run("relationship_added_event", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
 
 		var receivedEvent Event
 		w.OnEvent(func(event Event) {
 			receivedEvent = event
 		})
 
-		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		if receivedEvent.Type != EventRelationshipAdded {
 			t.Errorf("Expected EventRelationshipAdded, got %v", receivedEvent.Type)
@@ -989,16 +989,16 @@ func TestWorkspace_Events(t *testing.T) {
 
 	t.Run("relationship_removed_event", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
-		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		var receivedEvent Event
 		w.OnEvent(func(event Event) {
 			receivedEvent = event
 		})
 
-		w.RemoveRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.RemoveRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		if receivedEvent.Type != EventRelationshipRemoved {
 			t.Errorf("Expected EventRelationshipRemoved, got %v", receivedEvent.Type)
@@ -1019,7 +1019,7 @@ func TestWorkspace_Events(t *testing.T) {
 			callCount++
 		})
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		if callCount != 2 {
 			t.Errorf("Expected 2 event handler calls, got %d", callCount)
@@ -1035,16 +1035,16 @@ func TestWorkspace_Events(t *testing.T) {
 		})
 
 		// Perform various operations
-		w.AddEntity(createFileEntity("file1.txt"))
-		w.AddEntity(createAgentEntity("agent1"))
-		w.AddRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
+		_ = w.AddEntity(createFileEntity("file1.txt"))
+		_ = w.AddEntity(createAgentEntity("agent1"))
+		_ = w.AddRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
 
 		updated, _ := ast.NewEntity("file", "file1.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
-		w.UpdateEntity(updated)
+		_ = w.UpdateEntity(updated)
 
-		w.RemoveRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
-		w.RemoveEntity("file", "file1.txt")
+		_ = w.RemoveRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
+		_ = w.RemoveEntity("file", "file1.txt")
 		w.Clear()
 
 		expectedEvents := []EventType{
@@ -1078,7 +1078,7 @@ func TestWorkspace_Events(t *testing.T) {
 
 		// First upsert should add
 		entity := createFileEntity("test.txt")
-		w.UpsertEntity(entity)
+		_ = w.UpsertEntity(entity)
 
 		if len(events) != 1 || events[0] != EventEntityAdded {
 			t.Error("First upsert should emit EntityAdded event")
@@ -1087,7 +1087,7 @@ func TestWorkspace_Events(t *testing.T) {
 		// Second upsert should update
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/new/path"})
-		w.UpsertEntity(updated)
+		_ = w.UpsertEntity(updated)
 
 		if len(events) != 2 || events[1] != EventEntityUpdated {
 			t.Error("Second upsert should emit EntityUpdated event")
@@ -1098,7 +1098,7 @@ func TestWorkspace_Events(t *testing.T) {
 func TestWorkspace_Versioning(t *testing.T) {
 	t.Run("versioning_disabled_by_default", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		count := w.GetEntityVersionCount("file", "test.txt")
 		if count != 0 {
@@ -1108,7 +1108,7 @@ func TestWorkspace_Versioning(t *testing.T) {
 
 	t.Run("versioning_tracks_add", func(t *testing.T) {
 		w := New().WithVersioning()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		count := w.GetEntityVersionCount("file", "test.txt")
 		if count != 1 {
@@ -1127,12 +1127,12 @@ func TestWorkspace_Versioning(t *testing.T) {
 	t.Run("versioning_tracks_update", func(t *testing.T) {
 		w := New().WithVersioning()
 		original := createFileEntity("test.txt")
-		w.AddEntity(original)
+		_ = w.AddEntity(original)
 
 		// Update the entity
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/updated/path"})
-		w.UpdateEntity(updated)
+		_ = w.UpdateEntity(updated)
 
 		count := w.GetEntityVersionCount("file", "test.txt")
 		if count != 2 {
@@ -1159,7 +1159,7 @@ func TestWorkspace_Versioning(t *testing.T) {
 
 		// First upsert (add)
 		entity := createFileEntity("test.txt")
-		w.UpsertEntity(entity)
+		_ = w.UpsertEntity(entity)
 
 		count := w.GetEntityVersionCount("file", "test.txt")
 		if count != 1 {
@@ -1169,7 +1169,7 @@ func TestWorkspace_Versioning(t *testing.T) {
 		// Second upsert (update)
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/upserted/path"})
-		w.UpsertEntity(updated)
+		_ = w.UpsertEntity(updated)
 
 		count = w.GetEntityVersionCount("file", "test.txt")
 		if count != 2 {
@@ -1179,7 +1179,7 @@ func TestWorkspace_Versioning(t *testing.T) {
 
 	t.Run("get_entity_version_invalid", func(t *testing.T) {
 		w := New().WithVersioning()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		// Version 0 doesn't exist
 		_, found := w.GetEntityVersion("file", "test.txt", 0)
@@ -1202,15 +1202,15 @@ func TestWorkspace_Versioning(t *testing.T) {
 
 	t.Run("get_entity_history", func(t *testing.T) {
 		w := New().WithVersioning()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		updated, _ := ast.NewEntity("file", "test.txt")
 		updated.SetProperty("path", ast.StringValue{Value: "/v2/path"})
-		w.UpdateEntity(updated)
+		_ = w.UpdateEntity(updated)
 
 		updated2, _ := ast.NewEntity("file", "test.txt")
 		updated2.SetProperty("path", ast.StringValue{Value: "/v3/path"})
-		w.UpdateEntity(updated2)
+		_ = w.UpdateEntity(updated2)
 
 		history := w.GetEntityHistory("file", "test.txt")
 		if len(history) != 3 {
@@ -1241,9 +1241,9 @@ func TestWorkspace_Versioning(t *testing.T) {
 	t.Run("versioning_multiple_entities", func(t *testing.T) {
 		w := New().WithVersioning()
 
-		w.AddEntity(createFileEntity("file1.txt"))
-		w.AddEntity(createFileEntity("file2.txt"))
-		w.AddEntity(createAgentEntity("agent1"))
+		_ = w.AddEntity(createFileEntity("file1.txt"))
+		_ = w.AddEntity(createFileEntity("file2.txt"))
+		_ = w.AddEntity(createAgentEntity("agent1"))
 
 		if w.GetEntityVersionCount("file", "file1.txt") != 1 {
 			t.Error("file1.txt should have 1 version")
@@ -1259,7 +1259,7 @@ func TestWorkspace_Versioning(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			updated, _ := ast.NewEntity("file", "file1.txt")
 			updated.SetProperty("path", ast.StringValue{Value: fmt.Sprintf("/v%d", i+2)})
-			w.UpdateEntity(updated)
+			_ = w.UpdateEntity(updated)
 		}
 
 		if w.GetEntityVersionCount("file", "file1.txt") != 3 {
@@ -1291,8 +1291,8 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 	t.Run("serialize_with_entities", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
 
 		sw, err := w.Serialize()
 		if err != nil {
@@ -1305,9 +1305,9 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 	t.Run("serialize_with_relationships", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
-		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		sw, err := w.Serialize()
 		if err != nil {
@@ -1320,9 +1320,9 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 	t.Run("save_and_load_roundtrip", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
-		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		// Save to buffer
 		var buf strings.Builder
@@ -1361,7 +1361,7 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 	t.Run("save_and_load_file", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		// Create temp file
 		tmpFile, err := os.CreateTemp("", "workspace_test_*.json")
@@ -1395,13 +1395,13 @@ func TestWorkspace_Persistence(t *testing.T) {
 		entity := createFileEntity("test.txt")
 		entity.SetMetadata("author", "test-user")
 		entity.SetMetadata("version", "1.0")
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 
 		var buf strings.Builder
-		w.SaveTo(&buf)
+		_ = w.SaveTo(&buf)
 
 		w2 := New()
-		w2.LoadFrom(strings.NewReader(buf.String()))
+		_ = w2.LoadFrom(strings.NewReader(buf.String()))
 
 		loaded, _ := w2.GetEntityByName("file", "test.txt")
 		author, found := loaded.GetMetadata("author")
@@ -1412,17 +1412,17 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 	t.Run("load_clears_existing_data", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("existing.txt"))
+		_ = w.AddEntity(createFileEntity("existing.txt"))
 
 		// Create workspace with different data
 		w2 := New()
-		w2.AddEntity(createAgentEntity("new-agent"))
+		_ = w2.AddEntity(createAgentEntity("new-agent"))
 
 		var buf strings.Builder
-		w2.SaveTo(&buf)
+		_ = w2.SaveTo(&buf)
 
 		// Load into w - should replace existing data
-		w.LoadFrom(strings.NewReader(buf.String()))
+		_ = w.LoadFrom(strings.NewReader(buf.String()))
 
 		entities := w.GetEntities()
 		if len(entities) != 1 {
@@ -1443,16 +1443,16 @@ func TestWorkspace_Persistence(t *testing.T) {
 
 		// Create source workspace
 		w2 := New()
-		w2.AddEntity(createFileEntity("test.txt"))
+		_ = w2.AddEntity(createFileEntity("test.txt"))
 
 		var buf strings.Builder
-		w2.SaveTo(&buf)
+		_ = w2.SaveTo(&buf)
 
 		// Load into w - hooks should be preserved
-		w.LoadFrom(strings.NewReader(buf.String()))
+		_ = w.LoadFrom(strings.NewReader(buf.String()))
 
 		// Add a new entity - hook should fire
-		w.AddEntity(createFileEntity("new.txt"))
+		_ = w.AddEntity(createFileEntity("new.txt"))
 		if !hookCalled {
 			t.Error("Hooks should be preserved after load")
 		}
@@ -1476,7 +1476,7 @@ func TestWorkspace_Persistence(t *testing.T) {
 			Path: []string{"output"},
 		})
 		entity.SetProperty("var_prop", ast.VariableValue{Name: "input"})
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 
 		var buf strings.Builder
 		err := w.SaveTo(&buf)
@@ -1552,7 +1552,7 @@ func TestWorkspace_Persistence(t *testing.T) {
 func TestWorkspace_Snapshots(t *testing.T) {
 	t.Run("create_snapshot", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		snapshot, err := w.CreateSnapshot("v1")
 		if err != nil {
@@ -1575,14 +1575,14 @@ func TestWorkspace_Snapshots(t *testing.T) {
 
 	t.Run("restore_snapshot", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("original.txt"))
+		_ = w.AddEntity(createFileEntity("original.txt"))
 
 		// Create snapshot
 		snapshot, _ := w.CreateSnapshot("before-changes")
 
 		// Modify workspace
-		w.RemoveEntity("file", "original.txt")
-		w.AddEntity(createAgentEntity("new-agent"))
+		_ = w.RemoveEntity("file", "original.txt")
+		_ = w.AddEntity(createAgentEntity("new-agent"))
 
 		// Verify workspace changed
 		if len(w.GetEntitiesByType("file")) != 0 {
@@ -1627,9 +1627,9 @@ func TestWorkspace_Snapshots(t *testing.T) {
 
 	t.Run("snapshot_preserves_relationships", func(t *testing.T) {
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
-		w.AddEntity(createAgentEntity("assistant"))
-		w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
+		_ = w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createAgentEntity("assistant"))
+		_ = w.AddRelationship("agent", "assistant", "file", "test.txt", RelationTypeAssigned)
 
 		// Create snapshot
 		snapshot, _ := w.CreateSnapshot("with-rel")
@@ -1638,7 +1638,7 @@ func TestWorkspace_Snapshots(t *testing.T) {
 		w.Clear()
 
 		// Restore
-		w.RestoreSnapshot(snapshot)
+		_ = w.RestoreSnapshot(snapshot)
 
 		// Verify relationships
 		rels := w.GetRelationships()
@@ -1651,24 +1651,24 @@ func TestWorkspace_Snapshots(t *testing.T) {
 		w := New()
 
 		// State 1
-		w.AddEntity(createFileEntity("v1.txt"))
+		_ = w.AddEntity(createFileEntity("v1.txt"))
 		snap1, _ := w.CreateSnapshot("v1")
 
 		// State 2
-		w.AddEntity(createFileEntity("v2.txt"))
+		_ = w.AddEntity(createFileEntity("v2.txt"))
 		snap2, _ := w.CreateSnapshot("v2")
 
 		// State 3
-		w.AddEntity(createFileEntity("v3.txt"))
+		_ = w.AddEntity(createFileEntity("v3.txt"))
 
 		// Restore to v1
-		w.RestoreSnapshot(snap1)
+		_ = w.RestoreSnapshot(snap1)
 		if len(w.GetEntities()) != 1 {
 			t.Errorf("After restore to v1, expected 1 entity, got %d", len(w.GetEntities()))
 		}
 
 		// Restore to v2
-		w.RestoreSnapshot(snap2)
+		_ = w.RestoreSnapshot(snap2)
 		if len(w.GetEntities()) != 2 {
 			t.Errorf("After restore to v2, expected 2 entities, got %d", len(w.GetEntities()))
 		}
@@ -1679,7 +1679,7 @@ func TestSnapshotStore(t *testing.T) {
 	t.Run("save_and_get", func(t *testing.T) {
 		store := NewSnapshotStore()
 		w := New()
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 		snapshot, _ := w.CreateSnapshot("test")
 
 		err := store.Save(snapshot)
@@ -1725,7 +1725,7 @@ func TestSnapshotStore(t *testing.T) {
 		store := NewSnapshotStore()
 		w := New()
 		snapshot, _ := w.CreateSnapshot("to-delete")
-		store.Save(snapshot)
+		_ = store.Save(snapshot)
 
 		deleted := store.Delete("to-delete")
 		if !deleted {
@@ -1750,8 +1750,8 @@ func TestSnapshotStore(t *testing.T) {
 
 		snap1, _ := w.CreateSnapshot("first")
 		snap2, _ := w.CreateSnapshot("second")
-		store.Save(snap1)
-		store.Save(snap2)
+		_ = store.Save(snap1)
+		_ = store.Save(snap2)
 
 		ids := store.List()
 		if len(ids) != 2 {
@@ -1768,8 +1768,8 @@ func TestSnapshotStore(t *testing.T) {
 		w := New()
 		snap1, _ := w.CreateSnapshot("s1")
 		snap2, _ := w.CreateSnapshot("s2")
-		store.Save(snap1)
-		store.Save(snap2)
+		_ = store.Save(snap1)
+		_ = store.Save(snap2)
 
 		if store.Count() != 2 {
 			t.Errorf("Expected 2 snapshots, got %d", store.Count())
@@ -1819,8 +1819,8 @@ func TestWorkspace_Config(t *testing.T) {
 		w := New().WithConfig(cfg)
 
 		// Add first two entities
-		w.AddEntity(createFileEntity("file1.txt"))
-		w.AddEntity(createFileEntity("file2.txt"))
+		_ = w.AddEntity(createFileEntity("file1.txt"))
+		_ = w.AddEntity(createFileEntity("file2.txt"))
 
 		// Third should fail
 		err := w.AddEntity(createFileEntity("file3.txt"))
@@ -1836,9 +1836,9 @@ func TestWorkspace_Config(t *testing.T) {
 		cfg := &Config{MaxRelationships: 1}
 		w := New().WithConfig(cfg)
 
-		w.AddEntity(createFileEntity("file1.txt"))
-		w.AddEntity(createFileEntity("file2.txt"))
-		w.AddEntity(createAgentEntity("agent1"))
+		_ = w.AddEntity(createFileEntity("file1.txt"))
+		_ = w.AddEntity(createFileEntity("file2.txt"))
+		_ = w.AddEntity(createAgentEntity("agent1"))
 
 		// First relationship should succeed
 		err := w.AddRelationship("agent", "agent1", "file", "file1.txt", RelationTypeAssigned)
@@ -1881,7 +1881,7 @@ func TestWorkspace_Config(t *testing.T) {
 		cfg := &Config{AllowDuplicateNames: false}
 		w := New().WithConfig(cfg)
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		// Adding another file with the same name should fail
 		err := w.AddEntity(createFileEntity("test.txt"))
@@ -1894,7 +1894,7 @@ func TestWorkspace_Config(t *testing.T) {
 		cfg := &Config{AllowDuplicateNames: true}
 		w := New().WithConfig(cfg)
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		// Adding another file with the same name should succeed
 		err := w.AddEntity(createFileEntity("test.txt"))
@@ -1914,12 +1914,12 @@ func TestWorkspace_Config(t *testing.T) {
 		w := New().WithConfig(cfg)
 
 		// Add entity and update it multiple times
-		w.AddEntity(createFileEntity("test.txt")) // v1
+		_ = w.AddEntity(createFileEntity("test.txt")) // v1
 
 		for i := 2; i <= 5; i++ {
 			updated, _ := ast.NewEntity("file", "test.txt")
 			updated.SetProperty("path", ast.StringValue{Value: fmt.Sprintf("/v%d", i)})
-			w.UpdateEntity(updated)
+			_ = w.UpdateEntity(updated)
 		}
 
 		// Should only keep last 3 versions
@@ -1944,7 +1944,7 @@ func TestWorkspace_Config(t *testing.T) {
 		cfg := &Config{EnableVersioning: true}
 		w := New().WithConfig(cfg)
 
-		w.AddEntity(createFileEntity("test.txt"))
+		_ = w.AddEntity(createFileEntity("test.txt"))
 
 		count := w.GetEntityVersionCount("file", "test.txt")
 		if count != 1 {
@@ -2003,8 +2003,8 @@ func TestDependencyGraph(t *testing.T) {
 		dg := NewDependencyGraph()
 
 		// A -> B -> C
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "b", "file", "c")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "b", "file", "c")
 
 		// C -> A would create a cycle
 		err := dg.AddDependency("file", "c", "file", "a")
@@ -2025,8 +2025,8 @@ func TestDependencyGraph(t *testing.T) {
 	t.Run("remove_dependency", func(t *testing.T) {
 		dg := NewDependencyGraph()
 
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "a", "file", "c")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "c")
 
 		dg.RemoveDependency("file", "a", "file", "b")
 
@@ -2039,9 +2039,9 @@ func TestDependencyGraph(t *testing.T) {
 	t.Run("remove_entity", func(t *testing.T) {
 		dg := NewDependencyGraph()
 
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "b", "file", "c")
-		dg.AddDependency("file", "d", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "b", "file", "c")
+		_ = dg.AddDependency("file", "d", "file", "b")
 
 		dg.RemoveEntity("file", "b")
 
@@ -2062,8 +2062,8 @@ func TestDependencyGraph(t *testing.T) {
 		dg := NewDependencyGraph()
 
 		// a -> c, b -> c
-		dg.AddDependency("file", "a", "file", "c")
-		dg.AddDependency("file", "b", "file", "c")
+		_ = dg.AddDependency("file", "a", "file", "c")
+		_ = dg.AddDependency("file", "b", "file", "c")
 
 		dependents := dg.GetDependents("file", "c")
 		if len(dependents) != 2 {
@@ -2075,9 +2075,9 @@ func TestDependencyGraph(t *testing.T) {
 		dg := NewDependencyGraph()
 
 		// a -> b -> c -> d
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "b", "file", "c")
-		dg.AddDependency("file", "c", "file", "d")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "b", "file", "c")
+		_ = dg.AddDependency("file", "c", "file", "d")
 
 		trans := dg.GetTransitiveDependencies("file", "a")
 		if len(trans) != 3 {
@@ -2089,10 +2089,10 @@ func TestDependencyGraph(t *testing.T) {
 		dg := NewDependencyGraph()
 
 		// a -> b, a -> c, b -> d, c -> d
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "a", "file", "c")
-		dg.AddDependency("file", "b", "file", "d")
-		dg.AddDependency("file", "c", "file", "d")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "c")
+		_ = dg.AddDependency("file", "b", "file", "d")
+		_ = dg.AddDependency("file", "c", "file", "d")
 
 		sorted, err := dg.TopologicalSort()
 		if err != nil {
@@ -2131,7 +2131,7 @@ func TestDependencyGraph(t *testing.T) {
 		dg := NewDependencyGraph()
 
 		// Create a cycle manually by manipulating the map
-		dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "b")
 
 		// This shouldn't create a cycle since we check
 		// But if somehow there's a cycle, TopologicalSort should detect it
@@ -2144,8 +2144,8 @@ func TestDependencyGraph(t *testing.T) {
 	t.Run("clear", func(t *testing.T) {
 		dg := NewDependencyGraph()
 
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "b", "file", "c")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "b", "file", "c")
 
 		dg.Clear()
 
@@ -2157,9 +2157,9 @@ func TestDependencyGraph(t *testing.T) {
 	t.Run("count", func(t *testing.T) {
 		dg := NewDependencyGraph()
 
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "a", "file", "c")
-		dg.AddDependency("file", "b", "file", "d")
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "c")
+		_ = dg.AddDependency("file", "b", "file", "d")
 
 		if dg.Count() != 3 {
 			t.Errorf("Expected 3 dependencies, got %d", dg.Count())
@@ -2169,8 +2169,8 @@ func TestDependencyGraph(t *testing.T) {
 	t.Run("duplicate_dependency", func(t *testing.T) {
 		dg := NewDependencyGraph()
 
-		dg.AddDependency("file", "a", "file", "b")
-		dg.AddDependency("file", "a", "file", "b") // Duplicate
+		_ = dg.AddDependency("file", "a", "file", "b")
+		_ = dg.AddDependency("file", "a", "file", "b") // Duplicate
 
 		deps := dg.GetDependencies("file", "a")
 		if len(deps) != 1 {
@@ -2215,7 +2215,7 @@ func TestConcurrentProcessing(t *testing.T) {
 		// Add entities first
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		// Create updated entities
@@ -2242,7 +2242,7 @@ func TestConcurrentProcessing(t *testing.T) {
 		// Add some entities first
 		for i := 0; i < 3; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		// Upsert mix of existing and new
@@ -2325,12 +2325,12 @@ func TestConcurrentProcessing(t *testing.T) {
 		// Add file entities
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		// Add agent entity (should not be transformed)
 		agent, _ := ast.NewEntity("agent", "test-agent")
-		w.AddEntity(agent)
+		_ = w.AddEntity(agent)
 
 		// Transform only file entities
 		transformed, errors := w.TransformEntities(
@@ -2360,11 +2360,11 @@ func TestConcurrentProcessing(t *testing.T) {
 		// Add mix of entities
 		for i := 0; i < 10; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("agent", fmt.Sprintf("agent%d", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		// Filter only even-numbered files
@@ -2387,7 +2387,7 @@ func TestConcurrentProcessing(t *testing.T) {
 
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		var count int32
@@ -2411,11 +2411,11 @@ func TestConcurrentProcessing(t *testing.T) {
 		// Add mix
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.txt", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 		for i := 0; i < 3; i++ {
 			e, _ := ast.NewEntity("agent", fmt.Sprintf("agent%d", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		var count int32
@@ -2549,7 +2549,7 @@ func TestCustomValidators(t *testing.T) {
 
 		// Add entity first (no validators)
 		entity, _ := ast.NewEntity("file", "test.go")
-		w.AddEntity(entity)
+		_ = w.AddEntity(entity)
 
 		// Now add a validator
 		w.RegisterEntityValidator("file", func(e ast.Entity) error {
@@ -2834,11 +2834,11 @@ func TestPipeline(t *testing.T) {
 		// Add entities
 		for i := 0; i < 5; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.go", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 		for i := 0; i < 3; i++ {
 			e, _ := ast.NewEntity("agent", fmt.Sprintf("agent%d", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		pipeline := NewPipeline("files-only")
@@ -2863,7 +2863,7 @@ func TestPipeline(t *testing.T) {
 		// Add entities
 		for i := 0; i < 3; i++ {
 			e, _ := ast.NewEntity("file", fmt.Sprintf("file%d.go", i))
-			w.AddEntity(e)
+			_ = w.AddEntity(e)
 		}
 
 		pipeline := NewPipeline("updater")

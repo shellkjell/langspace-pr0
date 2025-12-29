@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/shellkjell/langspace/pkg/compile"
@@ -478,10 +477,9 @@ func printExecutionResult(w io.Writer, result *runtime.ExecutionResult) {
 
 // CLIStreamHandler handles streaming output for the CLI
 type CLIStreamHandler struct {
-	stdout      io.Writer
-	stderr      io.Writer
-	verbose     bool
-	chunkBuffer strings.Builder
+	stdout  io.Writer
+	stderr  io.Writer
+	verbose bool
 }
 
 func (h *CLIStreamHandler) OnChunk(chunk runtime.StreamChunk) {

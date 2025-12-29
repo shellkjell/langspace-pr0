@@ -122,7 +122,7 @@ func (g *Generator) writePipeline(buf *bytes.Buffer, pipeline ast.Entity) error 
 
 	// Collect steps
 	var steps []map[string]string
-	for key, val := range pipeline.Properties() {
+	for _, val := range pipeline.Properties() {
 		if nested, ok := val.(ast.NestedEntityValue); ok {
 			if nested.Entity.Type() == "step" {
 				stepName := nested.Entity.Name()
@@ -138,10 +138,6 @@ func (g *Generator) writePipeline(buf *bytes.Buffer, pipeline ast.Entity) error 
 					"usesAgent": usesAgent,
 				})
 			}
-		}
-		// Handle step property directly
-		if key == "step" {
-			// Already handled above
 		}
 	}
 

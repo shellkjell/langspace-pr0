@@ -1329,13 +1329,7 @@ func (w *Workspace) Serialize() (*SerializedWorkspace, error) {
 	}
 
 	for _, rel := range w.relationships {
-		sw.Relationships = append(sw.Relationships, SerializedRelationship{
-			SourceType: rel.SourceType,
-			SourceName: rel.SourceName,
-			TargetType: rel.TargetType,
-			TargetName: rel.TargetName,
-			Type:       rel.Type,
-		})
+		sw.Relationships = append(sw.Relationships, SerializedRelationship(rel))
 	}
 
 	return sw, nil
@@ -1437,13 +1431,7 @@ func (w *Workspace) loadFromSerialized(sw *SerializedWorkspace) error {
 
 	// Load relationships
 	for _, sr := range sw.Relationships {
-		w.relationships = append(w.relationships, Relationship{
-			SourceType: sr.SourceType,
-			SourceName: sr.SourceName,
-			TargetType: sr.TargetType,
-			TargetName: sr.TargetName,
-			Type:       sr.Type,
-		})
+		w.relationships = append(w.relationships, Relationship(sr))
 	}
 
 	return nil
