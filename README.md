@@ -253,87 +253,58 @@ for _, entity := range entities {
 }
 ```
 
-### Command Line (Planned)
+### Command Line
 
 ```bash
+# Parse a file and show statistics
+langspace parse -file workflow.ls
+
 # Execute a workflow
-langspace run workflow.ls --input ./src
+langspace run -file workflow.ls -name my-intent
 
-# Compile to Python
-langspace compile --target python workflow.ls -o workflow.py
+# Start a server for triggers (HTTP/SSE)
+langspace serve -file triggers.ls -port 8080
+
+# Compile to Python/LangGraph
+langspace compile --target python -file workflow.ls -output ./out
+
+# Validate syntax and rules
+langspace validate -file workflow.ls
 ```
 
-## Examples
+## VS Code Extension
 
-See the [examples/](examples/) directory:
+A VS Code extension for LangSpace is available in the `vscode-langspace/` directory. It provides:
+- Syntax highlighting for `.ls` files
+- Language configuration and snippets
 
-| Example | Description | Status |
-|---------|-------------|--------|
-| `01-hello-world.ls` | Basic agent definition | - Parses |
-| `02-files.ls` | File declarations and references | - Parses |
-| `03-agents.ls` | Agent configuration options | - Parses |
-| `04-intentions.ls` | Expressing desired outcomes | - Parses |
-| `05-pipelines.ls` | Multi-step workflows | - Parses |
-| `06-tools-mcp.ls` | Tool definitions and MCP integration | - Parses |
-| `07-config.ls` | Global configuration | - Parses |
-| `08-complete-code-review.ls` | Full code review workflow | - Parses |
-| `09-scripts.ls` | Code-first agent actions | - Parses |
-
-> **Parser Capabilities:**
-> - Nested blocks (e.g., `step { }` inside `pipeline { }`) ✅
-> - Typed parameters (e.g., `query: string required "description"`) ✅
-> - Inline typed blocks (e.g., `handler: http { ... }`) ✅
-> - Property access chains (e.g., `params.location`) ✅
-> - Inline enums (e.g., `type: enum ["a", "b", "c"]`) ✅
-> - Method calls on objects (e.g., `git.staged_files()`) ✅
-> - Comparison expressions (e.g., `env("X") == "true"`) ✅
-> - Control flow (`branch`, `loop`, `break_if`) ✅
->
-> See [examples/advanced/](examples/advanced/) for production-ready workflow patterns.
-
-## Architecture
-
-```
-langspace/
-├── cmd/langspace/     # CLI application
-├── pkg/
-│   ├── ast/           # Entity types and interfaces
-│   ├── parser/        # Language parser
-│   ├── slices/        # Generic slice utilities
-│   ├── tokenizer/     # Lexical analysis
-│   ├── validator/     # Entity validation
-│   └── workspace/     # Workspace management
+To install manually:
+```bash
+code --install-extension vscode-langspace/langspace-0.1.0.vsix
 ```
 
 ## Project Status
 
-**Current Phase: Execution & Compilation**
+**Current Phase: Integration & Compilation**
 
 ### - Implemented & Working
-- Block-based tokenizer with DSL syntax support
-- Parser for entity declarations with nested blocks and typed parameters
-- AST representation with entity metadata and relationships
-- Nested entity parsing (pipelines with steps, tools with handlers)
-- Typed parameter declarations (`name: string required "desc"`)
-- Property access chains (`params.location`, `config.defaults.timeout`)
-- Method calls (`git.staged_files()`) and comparison expressions
-- Control flow (`branch`, `loop`, `break_if`)
-- Validation framework with extensible custom validators
-- Workspace management with entity hooks, events, snapshots, and persistence
-- Error recovery parsing with detailed line/column error reporting
-- LLM integration (Anthropic, OpenAI providers)
-- Tool execution loop with shell and HTTP handlers
-- MCP (Model Context Protocol) client integration
-- Sandboxed Python and Shell script execution
-- Trigger engine for automated workflows
-- CLI commands: `parse`, `run`, `validate`, `serve`
-- Comprehensive test coverage (100+ tests)
+- **Block-based Syntax**: Full DSL support with nested blocks and typed parameters
+- **Expression Parser**: Method calls (`str.upper()`), comparisons (`x == y`), and control flow (`branch`, `loop`)
+- **Direct Execution**: Built-in runtime with Anthropic/OpenAI/Ollama support
+- **Tool Orchestration**: Auto-management of tool loops and MCP server integration
+- **Scripting**: Sandboxed Python/Shell execution for context-efficient actions
+- **Compilation**: Python/LangGraph target generation via `langspace compile`
+- **Automation**: Trigger engine for scheduled and event-driven workflows
+- **Workspace**: Full persistence, snapshoting, and versioning system
+- **CLI**: Comprehensive toolset (`parse`, `run`, `validate`, `serve`, `compile`)
+- **VS Code Support**: Syntax highlighting via bundled extension
+- **Test Coverage**: 150+ tests covering core logic and edge cases
 
 ### - In Progress / Planned
-- Compilation targets (Python/LangGraph, TypeScript)
-- `langspace compile` command
-- Syntax highlighting (VSCode extension)
-- Authentication and authorization
+- **TypeScript Compilation**: Target generation for Node.js/Deno
+- **Cloud Hosting**: Managed deployment for LangSpace workflows
+- **Advanced Debugging**: Step-by-step execution visualization
+- **Security**: Granular RBAC and secret management
 
 See [ROADMAP.md](ROADMAP.md) for the full development plan and [PRD.md](PRD.md) for the product specification.
 

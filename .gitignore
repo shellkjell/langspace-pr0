@@ -78,3 +78,4 @@ Icon
 *.gen.go
 *_string.go
 mock_*.go
+/out/

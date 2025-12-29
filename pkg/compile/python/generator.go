@@ -106,7 +106,7 @@ func (g *Generator) writeAgent(buf *bytes.Buffer, agent ast.Entity) error {
 	temperature := getNumberProp(agent, "temperature", 0.7)
 	instruction := getStringProp(agent, "instruction", "You are a helpful assistant.")
 
-	tmpl := template.Must(template.New("agent").Parse(agentTemplate))
+	tmpl := template.Must(template.New("agent").Funcs(funcMap).Parse(agentTemplate))
 	return tmpl.Execute(buf, map[string]interface{}{
 		"Name":        name,
 		"SafeName":    safeName,
@@ -141,7 +141,7 @@ func (g *Generator) writePipeline(buf *bytes.Buffer, pipeline ast.Entity) error 
 		}
 	}
 
-	tmpl := template.Must(template.New("pipeline").Parse(pipelineTemplate))
+	tmpl := template.Must(template.New("pipeline").Funcs(funcMap).Parse(pipelineTemplate))
 	return tmpl.Execute(buf, map[string]interface{}{
 		"Name":     name,
 		"SafeName": safeName,
@@ -157,15 +157,18 @@ func (g *Generator) writeIntent(buf *bytes.Buffer, intent ast.Entity) error {
 	usesPipeline := ""
 	if useVal, exists := intent.GetProperty("use"); exists {
 		if ref, ok := useVal.(ast.ReferenceValue); ok {
-			if ref.Type == "agent" {
+			switch ref.Type {
+			case "agent":
 				usesAgent = ref.Name
-			} else if ref.Type == "pipeline" {
+			case "pipeline":
 				usesPipeline = ref.Name
+			default:
+				return fmt.Errorf("invalid use type: %s", ref.Type)
 			}
 		}
 	}
 
-	tmpl := template.Must(template.New("intent").Parse(intentTemplate))
+	tmpl := template.Must(template.New("intent").Funcs(funcMap).Parse(intentTemplate))
 	return tmpl.Execute(buf, map[string]interface{}{
 		"Name":         name,
 		"SafeName":     safeName,
@@ -176,11 +179,12 @@ func (g *Generator) writeIntent(buf *bytes.Buffer, intent ast.Entity) error {
 
 func (g *Generator) generateRequirements() string {
 	return `# LangSpace Generated Requirements
-langgraph>=0.2.0
-langchain>=0.3.0
-langchain-anthropic>=0.3.0
-langchain-openai>=0.2.0
-python-dotenv>=1.0.0
+langgraph>=0.2.60
+langchain>=0.3.13
+langchain-anthropic>=0.3.1
+langchain-openai>=0.2.14
+python-dotenv>=1.0.1
+langsmith>=0.1.147
 `
 }
 
@@ -190,6 +194,14 @@ func toSnakeCase(s string) string {
 	s = strings.ReplaceAll(s, "-", "_")
 	s = strings.ReplaceAll(s, " ", "_")
 	return strings.ToLower(s)
+}
+
+var funcMap = template.FuncMap{
+	"title":     strings.Title,
+	"snakecase": toSnakeCase,
+	"add": func(a, b int) int {
+		return a + b
+	},
 }
 
 func getStringProp(entity ast.Entity, key, defaultVal string) string {
@@ -226,6 +238,13 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Observability (LangSmith)
+if os.getenv("LANGCHAIN_TRACING_V2") == "true":
+    if not os.getenv("LANGCHAIN_API_KEY"):
+        print("Warning: LANGCHAIN_TRACING_V2 is enabled but LANGCHAIN_API_KEY is not set.")
+    else:
+        print("Observability enabled (LangSmith)")
 
 `
 

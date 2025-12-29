@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/shellkjell/langspace/pkg/compile"
-	_ "github.com/shellkjell/langspace/pkg/compile/python" // Register Python compiler
+	_ "github.com/shellkjell/langspace/pkg/compile/python"     // Register Python compiler
+	_ "github.com/shellkjell/langspace/pkg/compile/typescript" // Register TypeScript compiler
 	"github.com/shellkjell/langspace/pkg/parser"
 	"github.com/shellkjell/langspace/pkg/runtime"
 	"github.com/shellkjell/langspace/pkg/workspace"
