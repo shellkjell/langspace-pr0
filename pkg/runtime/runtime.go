@@ -18,6 +18,7 @@ import (
 type Runtime struct {
 	workspace    *workspace.Workspace
 	providers    map[string]LLMProvider
+	mcpClients   map[string]MCPClient
 	defaultModel string
 	config       *Config
 	mu           sync.RWMutex
@@ -61,6 +62,7 @@ func New(ws *workspace.Workspace, opts ...Option) *Runtime {
 	r := &Runtime{
 		workspace:    ws,
 		providers:    make(map[string]LLMProvider),
+		mcpClients:   make(map[string]MCPClient),
 		config:       DefaultConfig(),
 		defaultModel: "claude-sonnet-4-20250514",
 	}
@@ -109,6 +111,51 @@ func (r *Runtime) GetProvider(name string) (LLMProvider, bool) {
 	return p, ok
 }
 
+// getMCPClient returns an MCP client for the given MCP server name.
+func (r *Runtime) getMCPClient(name string) (MCPClient, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if client, ok := r.mcpClients[name]; ok {
+		return client, nil
+	}
+
+	// Look up MCP entity in workspace
+	mcpEntity, found := r.workspace.GetEntityByName("mcp", name)
+	if !found {
+		return nil, fmt.Errorf("MCP server %q not found in workspace", name)
+	}
+
+	commandProp, ok := mcpEntity.GetProperty("command")
+	if !ok {
+		return nil, fmt.Errorf("MCP server %q missing 'command' property", name)
+	}
+
+	command, ok := commandProp.(ast.StringValue)
+	if !ok {
+		return nil, fmt.Errorf("MCP server %q 'command' must be a string", name)
+	}
+
+	var args []string
+	if argsProp, ok := mcpEntity.GetProperty("args"); ok {
+		if arr, ok := argsProp.(ast.ArrayValue); ok {
+			for _, elem := range arr.Elements {
+				if sv, ok := elem.(ast.StringValue); ok {
+					args = append(args, sv.Value)
+				}
+			}
+		}
+	}
+
+	client, err := NewStdioMCPClient(command.Value, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start MCP server %q: %w", name, err)
+	}
+
+	r.mcpClients[name] = client
+	return client, nil
+}
+
 // Execute runs an entity (intent or pipeline) and returns the result.
 func (r *Runtime) Execute(ctx context.Context, entity ast.Entity, opts ...ExecuteOption) (*ExecutionResult, error) {
 	execOpts := &executeOptions{
@@ -151,6 +198,8 @@ func (r *Runtime) Execute(ctx context.Context, entity ast.Entity, opts ...Execut
 		return r.executeIntent(execCtx, entity)
 	case "pipeline":
 		return r.executePipeline(execCtx, entity)
+	case "script":
+		return r.executeScript(execCtx, entity)
 	default:
 		return nil, fmt.Errorf("cannot execute entity of type %q", entity.Type())
 	}
@@ -163,6 +212,65 @@ func (r *Runtime) ExecuteByName(ctx context.Context, entityType, entityName stri
 		return nil, fmt.Errorf("entity not found: %s %q", entityType, entityName)
 	}
 	return r.Execute(ctx, entity, opts...)
+}
+
+// handleLifecycleEvent executes a lifecycle hook if defined on the entity.
+func (r *Runtime) handleLifecycleEvent(ctx *ExecutionContext, entity ast.Entity, eventName string, resolver *Resolver) {
+	hookProp, ok := entity.GetProperty(eventName)
+	if !ok {
+		return
+	}
+
+	var hookEntity ast.Entity
+
+	switch v := hookProp.(type) {
+	case ast.NestedEntityValue:
+		hookEntity = v.Entity
+	case ast.ReferenceValue:
+		// Resolve reference to entity
+		refEntity, found := r.workspace.GetEntityByName(v.Type, v.Name)
+		if !found {
+			ctx.EmitProgress(ProgressEvent{
+				Type:    ProgressTypeError,
+				Message: fmt.Sprintf("Lifecycle hook %s reference not found: %s %q", eventName, v.Type, v.Name),
+			})
+			return
+		}
+		hookEntity = refEntity
+	default:
+		// Try to resolve as a value that might be an entity
+		resolved, err := resolver.Resolve(hookProp)
+		if err != nil {
+			return
+		}
+		if ent, ok := resolved.(ast.Entity); ok {
+			hookEntity = ent
+		} else {
+			return
+		}
+	}
+
+	if hookEntity == nil {
+		return
+	}
+
+	ctx.EmitProgress(ProgressEvent{
+		Type:    ProgressTypeStep,
+		Step:    fmt.Sprintf("hook:%s", eventName),
+		Message: fmt.Sprintf("Executing %s hook", eventName),
+	})
+
+	// Execute the hook entity
+	// We use a background context or the current one? Usually hooks should be part of the same execution.
+	// But we don't want a hook failure to necessarily fail the whole thing if it's already finished.
+	// However, for now, we'll just execute it.
+	_, _ = r.Execute(ctx.Context, hookEntity, WithStreamHandler(ctx.Handler))
+
+	ctx.EmitProgress(ProgressEvent{
+		Type:    ProgressTypeStep,
+		Step:    fmt.Sprintf("hook:%s", eventName),
+		Message: fmt.Sprintf("Completed %s hook", eventName),
+	})
 }
 
 // executeOptions holds options for a single execution.
@@ -216,6 +324,9 @@ type ExecutionContext struct {
 
 	// For pipeline execution
 	StepOutputs map[string]interface{}
+
+	// For MCP tool resolution
+	MCPTools map[string]string // toolName -> mcpServerName
 }
 
 // SetVariable sets a variable in the execution context.

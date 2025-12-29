@@ -26,14 +26,20 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Script entity type for code-first agent actions (context-efficient)
 - [x] Generic slice utilities package for type-safe collection operations
 - [x] All core entity types: file, agent, tool, intent, pipeline, step, trigger, config, mcp, script
+- [x] Tool execution loop for agents
+- [x] Shell and HTTP tool handlers
+- [x] Sandboxed Python and Shell script execution
+- [x] Trigger engine for automated workflows
+- [x] LangSpace CLI with `serve` command
+- [x] Model Context Protocol (MCP) client interface
 
 
 ### Known Issues / Limitations
 - [x] ~~Nested block parsing not yet supported~~ — Now supports nested entities (step inside pipeline, handler blocks)
 - [x] ~~Typed parameters not yet supported~~ — Now parses `name: string required "desc"` syntax
-- [ ] Advanced expression syntax not yet supported — Method calls (`git.func()`), comparisons (`x == y`), control flow (`branch`, `loop`)
+- [x] Advanced expression syntax supported — Method calls (`git.func()`), comparisons (`x == y`), control flow (`branch`, `loop`)
 - [ ] Some PRD features still pending (triggers, automation, execution)
-- [ ] 4 of 9 examples parse fully (01-03, 06); 5 need advanced expressions
+- [x] All 9 examples parse fully (01-09); advanced expressions supported
 - [x] Performance claims verified with current benchmarks
 - [x] Entity relationships implemented
 
@@ -62,11 +68,11 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Support entity versioning (WithVersioning, GetEntityVersion, GetEntityHistory)
 
 ### 2. Script Execution Runtime
-- [ ] Implement sandboxed Python script execution
-- [ ] Add JavaScript/Node.js runtime support
-- [ ] Implement capability-based security model
-- [ ] Add resource limits (timeout, memory, CPU)
-- [ ] Support agent-generated code execution
+- [x] Implement sandboxed Python script execution
+- [x] Add JavaScript/Node.js runtime support (via Shell/Node)
+- [x] Implement capability-based security model (basic)
+- [x] Add resource limits (timeout, memory, CPU)
+- [x] Support agent-generated code execution
 
 ### 3. Parser Improvements
 - [x] Add support for comments
@@ -76,7 +82,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Improve error recovery
 - [ ] Support for custom entity types
 - [x] ~~Handle typed parameters~~ — Supports `query: string required "desc"` and `type: enum ["a", "b"]`
-- [ ] **Expression parser** — Method calls, comparisons, control flow (branch, loop, break_if)
+- [x] **Expression parser** — Method calls, comparisons, control flow (branch, loop, break_if)
 
 ### 4. Workspace Features
 > **Note:** Many workspace features are implemented as infrastructure for future phases.

@@ -8,9 +8,12 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/shellkjell/langspace/pkg/compile"
+	_ "github.com/shellkjell/langspace/pkg/compile/python" // Register Python compiler
 	"github.com/shellkjell/langspace/pkg/parser"
 	"github.com/shellkjell/langspace/pkg/runtime"
 	"github.com/shellkjell/langspace/pkg/workspace"
@@ -37,6 +40,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return runParse(commandArgs, stdin, stdout)
 	case "run":
 		return runExecute(commandArgs, stdin, stdout, stderr)
+	case "compile":
+		return runCompile(commandArgs, stdout)
+	case "serve":
+		return runServe(commandArgs, stdin, stdout, stderr)
 	case "validate":
 		return runValidate(commandArgs, stdin, stdout)
 	case "help", "-h", "--help":
@@ -58,7 +65,9 @@ Usage:
 Commands:
   parse     Parse a LangSpace file and display entities
   run       Execute an intent or pipeline
+  compile   Compile to target language (python, typescript)
   validate  Validate a LangSpace file without executing
+  serve     Start trigger server
 
 Options:
   -h, --help     Show this help message
@@ -243,6 +252,69 @@ func runExecute(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	return nil
 }
 
+// runCompile handles the compile command
+func runCompile(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("compile", flag.ContinueOnError)
+	inputFile := fs.String("file", "", "LangSpace file to compile")
+	target := fs.String("target", "python", "Target language (python, typescript)")
+	outputDir := fs.String("output", ".", "Output directory for generated files")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	if *inputFile == "" {
+		return fmt.Errorf("required flag -file not provided")
+	}
+
+	// Read and parse the file
+	content, err := os.ReadFile(*inputFile)
+	if err != nil {
+		return fmt.Errorf("reading file: %w", err)
+	}
+
+	ws := workspace.New()
+	p := parser.New(string(content))
+	entities, err := p.Parse()
+	if err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	for _, entity := range entities {
+		if err := ws.AddEntity(entity); err != nil {
+			return fmt.Errorf("adding entity %q: %w", entity.Name(), err)
+		}
+	}
+
+	// Get compiler for target
+	compiler, err := compile.Get(compile.Target(*target))
+	if err != nil {
+		return fmt.Errorf("getting compiler: %w", err)
+	}
+
+	// Compile
+	output, err := compiler.Compile(ws)
+	if err != nil {
+		return fmt.Errorf("compilation error: %w", err)
+	}
+
+	// Write output files
+	if err := os.MkdirAll(*outputDir, 0755); err != nil {
+		return fmt.Errorf("creating output directory: %w", err)
+	}
+
+	for filename, content := range output.Files {
+		outPath := filepath.Join(*outputDir, filename)
+		if err := os.WriteFile(outPath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", filename, err)
+		}
+		fmt.Fprintf(stdout, "Generated: %s\n", outPath)
+	}
+
+	fmt.Fprintf(stdout, "\nCompilation complete. %d files generated.\n", len(output.Files))
+	return nil
+}
+
 // runValidate handles the validate command
 func runValidate(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
@@ -275,6 +347,57 @@ func runValidate(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 
 	return nil
+}
+
+// runServe handles the serve command
+func runServe(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	inputFile := fs.String("file", "", "LangSpace file to serve")
+	port := fs.Int("port", 8080, "Port to listen on")
+
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing flags: %w", err)
+	}
+
+	if *inputFile == "" {
+		return fmt.Errorf("required flag -file not provided")
+	}
+
+	// Read and parse the file
+	content, err := os.ReadFile(*inputFile)
+	if err != nil {
+		return fmt.Errorf("reading file: %w", err)
+	}
+
+	ws := workspace.New()
+	p := parser.New(string(content))
+	entities, err := p.Parse()
+	if err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	for _, entity := range entities {
+		if err := ws.AddEntity(entity); err != nil {
+			return fmt.Errorf("adding entity %q: %w", entity.Name(), err)
+		}
+	}
+
+	// Create runtime
+	rt := runtime.New(ws)
+	rt.RegisterProvider("anthropic", runtime.NewAnthropicProvider())
+	rt.RegisterProvider("openai", runtime.NewOpenAIProvider())
+
+	// Start trigger engine
+	engine := runtime.NewTriggerEngine(rt)
+	if err := engine.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start trigger engine: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "LangSpace server listening on port %d...\n", *port)
+	fmt.Fprintf(stdout, "Trigger engine active with %d triggers\n", len(ws.GetEntitiesByType("trigger")))
+
+	// Keep running until interrupted
+	select {}
 }
 
 // detectEntityType tries to find an entity by name and returns its type
@@ -375,7 +498,7 @@ func (h *CLIStreamHandler) OnProgress(event runtime.ProgressEvent) {
 		case runtime.ProgressTypeStep:
 			fmt.Fprintf(h.stderr, "📍 [%d%%] %s\n", event.Progress, event.Message)
 		case runtime.ProgressTypeComplete:
-			fmt.Fprintf(h.stderr, "✅ %s\n", event.Message)
+			fmt.Fprintf(h.stderr, "- %s\n", event.Message)
 		case runtime.ProgressTypeError:
 			fmt.Fprintf(h.stderr, "❌ %s\n", event.Message)
 		}

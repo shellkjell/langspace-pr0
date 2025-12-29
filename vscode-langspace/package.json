@@ -1,0 +1,45 @@
+{
+  "name": "langspace",
+  "displayName": "LangSpace",
+  "description": "Syntax highlighting and language support for LangSpace (.ls files)",
+  "version": "0.1.0",
+  "publisher": "shellkjell",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shellkjell/langspace-pr0"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "langspace",
+    "ai",
+    "agents",
+    "llm",
+    "workflow"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "langspace",
+        "aliases": ["LangSpace", "langspace"],
+        "extensions": [".ls"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/langspace-light.png",
+          "dark": "./icons/langspace-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "langspace",
+        "scopeName": "source.langspace",
+        "path": "./syntaxes/langspace.tmLanguage.json"
+      }
+    ]
+  }
+}

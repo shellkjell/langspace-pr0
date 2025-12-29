@@ -530,26 +530,28 @@ pipeline "debate" {
 
 ## Roadmap
 
-### Phase 1: Foundation (Current)
+### Phase 1: Foundation - Complete
 - [x] Tokenizer with block syntax support
-- [x] Parser for declarations (file, agent, tool)
-- [ ] AST representation for all entity types
-- [ ] Basic validation and error reporting
+- [x] Parser for declarations (file, agent, tool, intent, pipeline, etc.)
+- [x] AST representation for all entity types
+- [x] Basic validation and error reporting
+- [x] Method calls, comparison expressions, control flow
 
-### Phase 2: Execution
-- [ ] Intent execution with LLM integration
-- [ ] Pipeline orchestration
-- [ ] Variable interpolation and data flow
-- [ ] Progress reporting and streaming
+### Phase 2: Execution - Complete
+- [x] Intent execution with LLM integration
+- [x] Pipeline orchestration
+- [x] Variable interpolation and data flow
+- [x] Progress reporting and streaming
+- [x] Sandboxed script execution (Python, Shell)
 
-### Phase 3: Integration
-- [ ] MCP client integration
+### Phase 3: Integration - In Progress
+- [x] MCP client integration
 - [ ] Compilation to Python/LangGraph
 - [ ] Compilation to TypeScript
-- [ ] CLI tool (`langspace run`, `langspace compile`)
+- [x] CLI tool (`langspace run`, `langspace serve`, `langspace parse`, `langspace validate`)
 
 ### Phase 4: Advanced
-- [ ] Trigger system and event handling
+- [x] Trigger system and event handling
 - [ ] Checkpointing and resumption
 - [ ] Multi-model routing
 - [ ] Plugin system for custom tools

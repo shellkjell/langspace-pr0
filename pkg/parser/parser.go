@@ -306,13 +306,21 @@ func (p *Parser) parseProperty(entity ast.Entity) *ParseError {
 		if err != nil {
 			return err
 		}
-		// Add to parent entity - special handling for pipelines
+		// Add to parent entity - special handling for pipelines and parallel blocks
 		if pipeline, ok := entity.(*ast.PipelineEntity); ok {
 			if step, ok := nestedValue.Entity.(*ast.StepEntity); ok {
 				pipeline.Steps = append(pipeline.Steps, step)
 				return nil
 			}
 		}
+
+		if parallel, ok := entity.(*ast.ParallelEntity); ok {
+			if step, ok := nestedValue.Entity.(*ast.StepEntity); ok {
+				parallel.Steps = append(parallel.Steps, step)
+				return nil
+			}
+		}
+
 		// For other cases, store as property
 		entity.SetProperty(key, nestedValue)
 		return nil
@@ -743,7 +751,8 @@ func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 	base := baseTok.Value
 	p.advance()
 
-	path := make([]string, 0)
+	var result ast.Value
+	result = ast.StringValue{Value: base}
 
 	// Parse the property/method chain
 	for p.current().Type == tokenizer.TokenTypeDot {
@@ -759,24 +768,15 @@ func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 		propName := propTok.Value
 		p.advance()
 
-		// Check if this is a method call: identifier()
+		// Check if this is a method call: .method()
 		if p.current().Type == tokenizer.TokenTypeLeftParen {
-			// This is a method call
 			args, err := p.parseArgumentList()
 			if err != nil {
 				return nil, err
 			}
 
-			// Create the object that the method is called on
-			var obj ast.Value
-			if len(path) == 0 {
-				obj = ast.StringValue{Value: base}
-			} else {
-				obj = ast.PropertyAccessValue{Base: base, Path: path}
-			}
-
-			result := ast.MethodCallValue{
-				Object:    obj,
+			mc := ast.MethodCallValue{
+				Object:    result,
 				Method:    propName,
 				Arguments: args,
 			}
@@ -787,43 +787,67 @@ func (p *Parser) parsePropertyAccess() (ast.Value, *ParseError) {
 				if nestedErr != nil {
 					return nil, nestedErr
 				}
-				result.InlineBody = nested.Entity
+				mc.InlineBody = nested.Entity
 			}
 
-			// Check for further property access after method call: method().output
-			if p.current().Type == tokenizer.TokenTypeDot {
-				// Wrap in ReferenceValue-like structure for path access
-				// For now, we'll return as-is since method calls can have further access
-				// This could be enhanced to support chained property access
+			result = mc
+		} else {
+			// Property access
+			if pa, ok := result.(ast.PropertyAccessValue); ok {
+				pa.Path = append(pa.Path, propName)
+				result = pa
+			} else if sv, ok := result.(ast.StringValue); ok && sv.Value == base {
+				result = ast.PropertyAccessValue{Base: base, Path: []string{propName}}
+			} else {
+				// Chained property access after method call or other value
+				result = ast.MethodCallValue{
+					Object:    result,
+					Method:    propName,
+					Arguments: []ast.Value{},
+				}
 			}
-
-			return result, nil
 		}
-
-		path = append(path, propName)
 	}
 
 	// Check for inline block after property access: github.pull_request { ... }
 	if p.current().Type == tokenizer.TokenTypeLeftBrace {
-		// Create a type name from the full path
-		typeName := base
-		if len(path) > 0 {
-			typeName = path[len(path)-1]
+		var typeName string
+		var object ast.Value
+
+		if pa, ok := result.(ast.PropertyAccessValue); ok {
+			typeName = pa.Path[len(pa.Path)-1]
+			if len(pa.Path) == 1 {
+				object = ast.StringValue{Value: pa.Base}
+			} else {
+				object = ast.PropertyAccessValue{Base: pa.Base, Path: pa.Path[:len(pa.Path)-1]}
+			}
+		} else if sv, ok := result.(ast.StringValue); ok {
+			typeName = sv.Value
+			object = ast.StringValue{Value: ""} // Or some other indicator
+		} else if mc, ok := result.(ast.MethodCallValue); ok {
+			typeName = mc.Method
+			object = mc.Object
 		}
+
 		nested, err := p.parseNestedEntity(typeName, baseTok.Line, baseTok.Column)
 		if err != nil {
 			return nil, err
 		}
-		// Return as a MethodCallValue-like structure with the property access as object
-		return ast.MethodCallValue{
-			Object:     ast.PropertyAccessValue{Base: base, Path: path[:max(0, len(path)-1)]},
-			Method:     typeName,
-			Arguments:  []ast.Value{},
-			InlineBody: nested.Entity,
-		}, nil
+
+		if mc, ok := result.(ast.MethodCallValue); ok {
+			mc.InlineBody = nested.Entity
+			result = mc
+		} else {
+			result = ast.MethodCallValue{
+				Object:     object,
+				Method:     typeName,
+				Arguments:  []ast.Value{},
+				InlineBody: nested.Entity,
+			}
+		}
 	}
 
-	return ast.PropertyAccessValue{Base: base, Path: path}, nil
+	return result, nil
 }
 
 // parseArgumentList parses a function argument list: (arg1, arg2, ...)

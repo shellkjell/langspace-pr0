@@ -2,11 +2,15 @@
 
 LangSpace is a declarative DSL for composing AI agent workflows. The codebase is a Go 1.23+ project implementing a lexer → parser → AST → runtime pipeline.
 
-## Architecture Overview
+## Architecture & Philosophy
 
+**Big Picture:**
 ```
 Input (.ls file) → Tokenizer → Parser → AST Entities → Workspace → Runtime/Execution
 ```
+
+**Core Philosophy: Script-First vs Tool-Heavy**
+LangSpace prioritizes "Script-first" agent actions to minimize context window bloat. Instead of multiple tool round-trips, agents write executable code (Python, JS, etc.) that performs complex operations in a single execution.
 
 **Core packages:**
 - [pkg/tokenizer](../pkg/tokenizer/tokenizer.go) - Lexical analysis, produces tokens with line/column tracking
@@ -14,7 +18,8 @@ Input (.ls file) → Tokenizer → Parser → AST Entities → Workspace → Run
 - [pkg/ast](../pkg/ast/entity.go) - Entity types (`agent`, `file`, `tool`, `intent`, `pipeline`, `script`, etc.)
 - [pkg/workspace](../pkg/workspace/workspace.go) - Entity storage with hooks, events, relationships, and snapshots
 - [pkg/validator](../pkg/validator/validator.go) - Type-specific validation rules
-- [pkg/runtime](../pkg/runtime/runtime.go) - LLM integration and workflow execution (in progress)
+- [pkg/runtime](../pkg/runtime/runtime.go) - LLM integration and workflow execution (Intent/Pipeline)
+- [pkg/slices](../pkg/slices/slices.go) - Generic slice utilities (Filter, Map, Find, etc.)
 
 ## Key Patterns
 
@@ -33,19 +38,34 @@ result := p.ParseWithRecovery()
 // result.Errors contains ParseError with Line/Column/Message
 ```
 
-### Workspace Hooks & Events
+### Workspace Hooks, Events & Validation
 ```go
 ws := workspace.New()
+// Lifecycle hooks
 ws.OnEntityEvent(workspace.HookBeforeAdd, func(e ast.Entity) error {
-    // Return error to cancel add operation
+    return nil // Return error to cancel
 })
+// Custom validators
+ws.RegisterEntityValidator("agent", func(e ast.Entity) error {
+    if _, ok := e.GetProperty("model"); !ok {
+        return fmt.Errorf("missing model")
+    }
+    return nil
+})
+// Global events
 ws.OnEvent(func(event workspace.Event) {
-    // React to EventEntityAdded, EventEntityRemoved, etc.
+    // React to EventEntityAdded, etc.
 })
 ```
 
+### Runtime Execution (pkg/runtime)
+- `Runtime` coordinates `LLMProvider`s and `ExecutionContext`.
+- `Resolver` handles variable interpolation and property access during execution.
+- `StreamHandler` manages real-time output (chunks and progress events).
+- Execution flow: `Execute` → `executeIntent` or `executePipeline` → `LLMProvider.Complete`.
+
 ### Generic Slice Utilities (pkg/slices)
-Prefer these over manual loops:
+**CRITICAL:** Prefer these over manual loops for readability and consistency:
 ```go
 slices.Filter(entities, func(e ast.Entity) bool { return e.Type() == "agent" })
 slices.Find(entities, predicate)
@@ -104,6 +124,13 @@ pipeline "name" {
   step "step1" { use: agent("name") input: $input }
   step "step2" { use: agent("other") input: step("step1").output }
   output: step("step2").output
+}
+
+# Scripts - code-first actions (context efficient)
+script "db-update" {
+  language: "python"
+  code: ```python ... ```
+  capabilities: [database]
 }
 
 # References: agent("x"), file("y"), step("z").output

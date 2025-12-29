@@ -269,29 +269,27 @@ See the [examples/](examples/) directory:
 
 | Example | Description | Status |
 |---------|-------------|--------|
-| `01-hello-world.ls` | Basic agent definition | ✅ Parses |
-| `02-files.ls` | File declarations and references | ✅ Parses |
-| `03-agents.ls` | Agent configuration options | ✅ Parses |
-| `04-intentions.ls` | Expressing desired outcomes | 🚧 Partial (needs `git.func()` syntax) |
-| `05-pipelines.ls` | Multi-step workflows | 🚧 Partial (needs `branch`/`loop`) |
-| `06-tools-mcp.ls` | Tool definitions and MCP integration | ✅ Parses |
-| `07-config.ls` | Global configuration | 🚧 Partial (needs comparison expressions) |
-| `08-complete-code-review.ls` | Full code review workflow | 🚧 Partial (needs advanced expressions) |
-| `09-scripts.ls` | Code-first agent actions | 🚧 Partial (needs advanced expressions) |
+| `01-hello-world.ls` | Basic agent definition | - Parses |
+| `02-files.ls` | File declarations and references | - Parses |
+| `03-agents.ls` | Agent configuration options | - Parses |
+| `04-intentions.ls` | Expressing desired outcomes | - Parses |
+| `05-pipelines.ls` | Multi-step workflows | - Parses |
+| `06-tools-mcp.ls` | Tool definitions and MCP integration | - Parses |
+| `07-config.ls` | Global configuration | - Parses |
+| `08-complete-code-review.ls` | Full code review workflow | - Parses |
+| `09-scripts.ls` | Code-first agent actions | - Parses |
 
-> **Current Parser Capabilities:**
+> **Parser Capabilities:**
 > - Nested blocks (e.g., `step { }` inside `pipeline { }`) ✅
 > - Typed parameters (e.g., `query: string required "description"`) ✅
 > - Inline typed blocks (e.g., `handler: http { ... }`) ✅
 > - Property access chains (e.g., `params.location`) ✅
 > - Inline enums (e.g., `type: enum ["a", "b", "c"]`) ✅
+> - Method calls on objects (e.g., `git.staged_files()`) ✅
+> - Comparison expressions (e.g., `env("X") == "true"`) ✅
+> - Control flow (`branch`, `loop`, `break_if`) ✅
 >
-> **Not Yet Implemented:**
-> - Method calls on objects (`git.staged_files()`)
-> - Comparison expressions (`env("X") == "true"`)
-> - Control flow (`branch`, `loop`, `break_if`)
->
-> Examples marked as "Partial" demonstrate syntax that's partially supported.
+> See [examples/advanced/](examples/advanced/) for production-ready workflow patterns.
 
 ## Architecture
 
@@ -309,27 +307,33 @@ langspace/
 
 ## Project Status
 
-**Current Phase: Foundation**
+**Current Phase: Execution & Compilation**
 
-### ✅ Implemented & Working
+### - Implemented & Working
 - Block-based tokenizer with DSL syntax support
 - Parser for entity declarations with nested blocks and typed parameters
 - AST representation with entity metadata and relationships
 - Nested entity parsing (pipelines with steps, tools with handlers)
 - Typed parameter declarations (`name: string required "desc"`)
 - Property access chains (`params.location`, `config.defaults.timeout`)
+- Method calls (`git.staged_files()`) and comparison expressions
+- Control flow (`branch`, `loop`, `break_if`)
 - Validation framework with extensible custom validators
 - Workspace management with entity hooks, events, snapshots, and persistence
 - Error recovery parsing with detailed line/column error reporting
+- LLM integration (Anthropic, OpenAI providers)
+- Tool execution loop with shell and HTTP handlers
+- MCP (Model Context Protocol) client integration
+- Sandboxed Python and Shell script execution
+- Trigger engine for automated workflows
+- CLI commands: `parse`, `run`, `validate`, `serve`
 - Comprehensive test coverage (100+ tests)
 
-### 🚧 In Progress / Planned
-- Nested block parsing (step inside pipeline, parallel blocks)
-- Typed parameters (`query: string required`)
-- LLM integration and execution runtime
-- Script execution sandbox
+### - In Progress / Planned
 - Compilation targets (Python/LangGraph, TypeScript)
-- Full CLI tool (`langspace run`, `langspace compile`)
+- `langspace compile` command
+- Syntax highlighting (VSCode extension)
+- Authentication and authorization
 
 See [ROADMAP.md](ROADMAP.md) for the full development plan and [PRD.md](PRD.md) for the product specification.
 

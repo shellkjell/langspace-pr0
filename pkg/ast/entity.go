@@ -304,6 +304,25 @@ func (p *PipelineEntity) AddStep(step *StepEntity) {
 	p.Steps = append(p.Steps, step)
 }
 
+// ParallelEntity represents a parallel execution block
+type ParallelEntity struct {
+	*BaseEntity
+	Steps []*StepEntity
+}
+
+// NewParallelEntity creates a new parallel entity
+func NewParallelEntity(name string) *ParallelEntity {
+	return &ParallelEntity{
+		BaseEntity: NewBaseEntity("parallel", name),
+		Steps:      make([]*StepEntity, 0),
+	}
+}
+
+// AddStep adds a step to the parallel block
+func (p *ParallelEntity) AddStep(step *StepEntity) {
+	p.Steps = append(p.Steps, step)
+}
+
 // StepEntity represents a step within a pipeline
 type StepEntity struct {
 	*BaseEntity
@@ -378,6 +397,7 @@ var entityRegistry = map[string]EntityFactory{
 	"tool":     func(name string) Entity { return NewToolEntity(name) },
 	"intent":   func(name string) Entity { return NewIntentEntity(name) },
 	"pipeline": func(name string) Entity { return NewPipelineEntity(name) },
+	"parallel": func(name string) Entity { return NewParallelEntity(name) },
 	"step":     func(name string) Entity { return NewStepEntity(name) },
 	"trigger":  func(name string) Entity { return NewTriggerEntity(name) },
 	"config":   func(name string) Entity { return NewConfigEntity() },

@@ -54,6 +54,13 @@ func (r *Runtime) executeIntent(ctx *ExecutionContext, entity ast.Entity) (*Exec
 	// Get temperature
 	temperature := r.getAgentTemperature(agent)
 
+	// Get tools
+	tools, err := r.getAgentTools(ctx, agent, resolver)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to get agent tools: %w", err)
+		return result, result.Error
+	}
+
 	// Get the provider
 	provider, err := r.getProviderForModel(model)
 	if err != nil {
@@ -61,18 +68,26 @@ func (r *Runtime) executeIntent(ctx *ExecutionContext, entity ast.Entity) (*Exec
 		return result, result.Error
 	}
 
-	// Build the request
-	req := &CompletionRequest{
-		Model:        model,
-		SystemPrompt: systemPrompt,
-		Messages: []Message{
-			{Role: RoleUser, Content: prompt},
-		},
-		Temperature: temperature,
+	// Build the initial messages
+	messages := []Message{
+		{Role: RoleUser, Content: prompt},
 	}
+
+	// Loop for tool execution
+	maxTurns := 10
+	for turn := 0; turn < maxTurns; turn++ {
+		// Build the request
+		req := &CompletionRequest{
+			Model:        model,
+			SystemPrompt: systemPrompt,
+			Messages:     messages,
+			Temperature:  temperature,
+			Tools:        tools,
+		}
 
 	// Execute the LLM call
 	var resp *CompletionResponse
+	var lastResp *CompletionResponse
 	if ctx.Handler != nil && r.config.EnableStreaming {
 		resp, err = provider.CompleteStream(ctx.Context, req, ctx.Handler)
 	} else {
@@ -88,18 +103,62 @@ func (r *Runtime) executeIntent(ctx *ExecutionContext, entity ast.Entity) (*Exec
 		return result, result.Error
 	}
 
+	lastResp = resp
+	// Update token usage
+	result.TokensUsed.Add(resp.Usage)
+
+	// Add assistant message to history
+	assistantMsg := Message{
+		Role:      RoleAssistant,
+		Content:   resp.Content,
+		ToolCalls: resp.ToolCalls,
+	}
+	messages = append(messages, assistantMsg)
+
+	// If no tool calls, we're done
+	if len(resp.ToolCalls) == 0 || resp.FinishReason != FinishReasonToolUse {
+		result.Output = resp.Content
+		result.Metadata["finish_reason"] = string(resp.FinishReason)
+		break
+	}
+
+	// Execute tool calls
+	for _, tc := range resp.ToolCalls {
+		ctx.EmitProgress(ProgressEvent{
+			Type:    ProgressTypeStep,
+			Message: fmt.Sprintf("Executing tool: %s", tc.Name),
+			Metadata: map[string]string{
+				"tool": tc.Name,
+			},
+		})
+
+		toolResult, err := r.executeToolCall(ctx, tc, resolver)
+		if err != nil {
+			// We report the error back to the LLM so it can try to fix it
+			toolResult = fmt.Sprintf("Error: %v", err)
+		}
+
+		// Add tool result to history
+		messages = append(messages, Message{
+			Role:       RoleTool,
+			Content:    toString(toolResult),
+			ToolCallID: tc.ID,
+		})
+	}
+	resp = lastResp // Restore for metadata access if needed
+}
+
 	// Store the output
 	result.Success = true
-	result.Output = resp.Content
-	result.TokensUsed = resp.Usage
 	result.Duration = time.Since(startTime)
-	result.Metadata["model"] = resp.Model
-	result.Metadata["finish_reason"] = string(resp.FinishReason)
+	result.Metadata["model"] = model
 
 	// Handle output destination if specified
-	if err := r.handleIntentOutput(ctx, entity, resp.Content, resolver); err != nil {
-		result.Error = fmt.Errorf("failed to handle output: %w", err)
-		return result, result.Error
+	if result.Output != nil {
+		if err := r.handleIntentOutput(ctx, entity, toString(result.Output), resolver); err != nil {
+			result.Error = fmt.Errorf("failed to handle output: %w", err)
+			return result, result.Error
+		}
 	}
 
 	// Emit completion event
@@ -108,12 +167,127 @@ func (r *Runtime) executeIntent(ctx *ExecutionContext, entity ast.Entity) (*Exec
 		Message:  fmt.Sprintf("Intent completed: %s", entity.Name()),
 		Progress: 100,
 		Metadata: map[string]string{
-			"tokens_used": fmt.Sprintf("%d", resp.Usage.TotalTokens),
+			"tokens_used": fmt.Sprintf("%d", result.TokensUsed.TotalTokens),
 			"duration":    result.Duration.String(),
 		},
 	})
 
 	return result, nil
+}
+
+// getAgentTools extracts tool definitions from an agent.
+func (r *Runtime) getAgentTools(ctx *ExecutionContext, agent ast.Entity, resolver *Resolver) ([]ToolDefinition, error) {
+	toolsProp, ok := agent.GetProperty("tools")
+	if !ok {
+		return nil, nil
+	}
+
+	var toolNames []string
+	switch v := toolsProp.(type) {
+	case ast.ArrayValue:
+		for _, elem := range v.Elements {
+			if sv, ok := elem.(ast.StringValue); ok {
+				toolNames = append(toolNames, sv.Value)
+			} else if rv, ok := elem.(ast.ReferenceValue); ok && rv.Type == "tool" {
+				toolNames = append(toolNames, rv.Name)
+			} else if rv, ok := elem.(ast.ReferenceValue); ok && rv.Type == "mcp" {
+				toolNames = append(toolNames, rv.Name)
+			}
+		}
+	}
+
+	var definitions []ToolDefinition
+	for _, name := range toolNames {
+		// Check if it's an MCP server reference
+		if mcpEntity, err := resolver.workspace.GetMCP(name); err == nil {
+			client, err := r.getMCPClient(mcpEntity.Name())
+			if err != nil {
+				return nil, err
+			}
+			mcpTools, err := client.ListTools(ctx.Context)
+			if err != nil {
+				return nil, err
+			}
+
+			// Track which tools belong to this MCP server
+			if ctx.MCPTools == nil {
+				ctx.MCPTools = make(map[string]string)
+			}
+			for _, t := range mcpTools {
+				ctx.MCPTools[t.Name] = mcpEntity.Name()
+			}
+
+			definitions = append(definitions, mcpTools...)
+			continue
+		}
+
+		tool, err := resolver.workspace.GetTool(name)
+		if err != nil {
+			return nil, err
+		}
+
+		def := ToolDefinition{
+			Name:        tool.Name(),
+			Description: tool.Name(), // Default to name
+		}
+
+		if desc, ok := tool.GetProperty("description"); ok {
+			if sv, ok := desc.(ast.StringValue); ok {
+				def.Description = sv.Value
+			}
+		}
+
+		if params, ok := tool.GetProperty("parameters"); ok {
+			if obj, ok := params.(ast.ObjectValue); ok {
+				def.Parameters = make(map[string]interface{})
+				// Convert AST ObjectValue to JSON-compatible map
+				// This is a simplified conversion
+				for k, v := range obj.Properties {
+					def.Parameters[k] = v
+				}
+			}
+		}
+
+		definitions = append(definitions, def)
+	}
+
+	return definitions, nil
+}
+
+// executeToolCall executes a single tool call from the LLM.
+func (r *Runtime) executeToolCall(ctx *ExecutionContext, tc ToolCall, resolver *Resolver) (interface{}, error) {
+	// Check if it's an MCP tool
+	if mcpServer, ok := ctx.MCPTools[tc.Name]; ok {
+		return r.executeMCPTool(ctx, mcpServer, tc.Name, tc.Arguments)
+	}
+
+	tool, err := resolver.workspace.GetTool(tc.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for command property (shell tool)
+	if cmd, ok := tool.GetProperty("command"); ok {
+		cmdStr, err := resolver.ResolveString(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		// Interpolate arguments into command if needed
+		// For now, just append them or use a simple template
+		return r.executeShellCommand(ctx, cmdStr, tc.Arguments)
+	}
+
+	// Check for function property (built-in or custom function)
+	if fn, ok := tool.GetProperty("function"); ok {
+		fnName, err := resolver.ResolveString(fn)
+		if err != nil {
+			return nil, err
+		}
+		return r.executeFunction(ctx, fnName, tc.Arguments)
+	}
+
+	return nil, fmt.Errorf("tool %q has no executable property (command or function)", tc.Name)
 }
 
 // resolveAgent resolves the agent to use for an intent.

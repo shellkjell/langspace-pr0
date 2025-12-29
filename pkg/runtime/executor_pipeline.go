@@ -63,6 +63,8 @@ func (r *Runtime) executePipeline(ctx *ExecutionContext, entity ast.Entity) (*Ex
 			if nested, ok := value.(ast.NestedEntityValue); ok {
 				if err := r.executeParallelBlock(ctx, nested.Entity, resolver, result); err != nil {
 					result.Error = err
+					r.handleLifecycleEvent(ctx, entity, "on_failure", resolver)
+					r.handleLifecycleEvent(ctx, entity, "on_complete", resolver)
 					return result, err
 				}
 			}
@@ -73,6 +75,8 @@ func (r *Runtime) executePipeline(ctx *ExecutionContext, entity ast.Entity) (*Ex
 			if branchVal, ok := value.(ast.BranchValue); ok {
 				if err := r.executeBranchBlock(ctx, branchVal, resolver, result); err != nil {
 					result.Error = err
+					r.handleLifecycleEvent(ctx, entity, "on_failure", resolver)
+					r.handleLifecycleEvent(ctx, entity, "on_complete", resolver)
 					return result, err
 				}
 			}
@@ -83,6 +87,8 @@ func (r *Runtime) executePipeline(ctx *ExecutionContext, entity ast.Entity) (*Ex
 			if loopVal, ok := value.(ast.LoopValue); ok {
 				if err := r.executeLoopBlock(ctx, loopVal, resolver, result); err != nil {
 					result.Error = err
+					r.handleLifecycleEvent(ctx, entity, "on_failure", resolver)
+					r.handleLifecycleEvent(ctx, entity, "on_complete", resolver)
 					return result, err
 				}
 			}
@@ -94,6 +100,8 @@ func (r *Runtime) executePipeline(ctx *ExecutionContext, entity ast.Entity) (*Ex
 		output, err := resolver.Resolve(outputProp)
 		if err != nil {
 			result.Error = fmt.Errorf("failed to resolve output: %w", err)
+			r.handleLifecycleEvent(ctx, entity, "on_failure", resolver)
+			r.handleLifecycleEvent(ctx, entity, "on_complete", resolver)
 			return result, result.Error
 		}
 		result.Output = output
@@ -107,6 +115,10 @@ func (r *Runtime) executePipeline(ctx *ExecutionContext, entity ast.Entity) (*Ex
 
 	result.Success = true
 	result.Duration = time.Since(startTime)
+
+	// Handle success lifecycle events
+	r.handleLifecycleEvent(ctx, entity, "on_success", resolver)
+	r.handleLifecycleEvent(ctx, entity, "on_complete", resolver)
 
 	// Emit completion event
 	ctx.EmitProgress(ProgressEvent{
@@ -304,54 +316,59 @@ func (r *Runtime) resolveStepInput(ctx *ExecutionContext, input ast.Value, resol
 	return formatContent(resolved), nil
 }
 
-// executeParallelBlock executes steps in parallel.
+// executeParallelBlock executes entities in parallel.
 func (r *Runtime) executeParallelBlock(ctx *ExecutionContext, entity ast.Entity, resolver *Resolver, result *ExecutionResult) error {
-	// Get steps from the parallel block
-	var steps []*ast.StepEntity
+	var entities []ast.Entity
 
-	// Check for step properties
-	for key, value := range entity.Properties() {
-		if nested, ok := value.(ast.NestedEntityValue); ok {
-			if stepEntity, ok := nested.Entity.(*ast.StepEntity); ok {
-				steps = append(steps, stepEntity)
-			}
+	// If it's a ParallelEntity, use its steps
+	if parallel, ok := entity.(*ast.ParallelEntity); ok {
+		for _, step := range parallel.Steps {
+			entities = append(entities, step)
 		}
-		// Also check for inline step definitions
-		if key == "step" {
+	} else {
+		// Fallback: Collect all nested entities from properties
+		for _, value := range entity.Properties() {
 			if nested, ok := value.(ast.NestedEntityValue); ok {
-				if stepEntity, ok := nested.Entity.(*ast.StepEntity); ok {
-					steps = append(steps, stepEntity)
-				}
+				entities = append(entities, nested.Entity)
 			}
 		}
 	}
 
-	if len(steps) == 0 {
+	if len(entities) == 0 {
 		return nil
 	}
 
-	// Execute steps in parallel
+	// Execute entities in parallel
 	var wg sync.WaitGroup
-	results := make([]*StepResult, len(steps))
-	errors := make([]error, len(steps))
+	execResults := make([]*ExecutionResult, len(entities))
+	errors := make([]error, len(entities))
 
-	for i, step := range steps {
+	for i, ent := range entities {
 		wg.Add(1)
-		go func(idx int, s *ast.StepEntity) {
+		go func(idx int, e ast.Entity) {
 			defer wg.Done()
-			stepResult, err := r.executeStep(ctx, s, resolver, idx+1, len(steps))
-			results[idx] = stepResult
+			res, err := r.Execute(ctx.Context, e)
+			execResults[idx] = res
 			errors[idx] = err
-		}(i, step)
+		}(i, ent)
 	}
 
 	wg.Wait()
 
 	// Collect results
-	for i, step := range steps {
-		result.StepResults[step.Name()] = results[i]
+	for i, ent := range entities {
 		if errors[i] != nil {
-			return fmt.Errorf("parallel step %q failed: %w", step.Name(), errors[i])
+			return fmt.Errorf("parallel entity %q failed: %w", ent.Name(), errors[i])
+		}
+
+		// If it was a step, add to step results
+		if stepEntity, ok := ent.(*ast.StepEntity); ok {
+			result.StepResults[stepEntity.Name()] = &StepResult{
+				Name:     stepEntity.Name(),
+				Success:  execResults[i].Success,
+				Output:   execResults[i].Output,
+				Duration: execResults[i].Duration,
+			}
 		}
 	}
 
@@ -380,17 +397,26 @@ func (r *Runtime) executeBranchBlock(ctx *ExecutionContext, branch ast.BranchVal
 	}
 
 	// Execute the matched case
+	execResult, err := r.Execute(ctx.Context, caseEntity.Entity)
+	if err != nil {
+		return fmt.Errorf("branch case %q failed: %w", conditionStr, err)
+	}
+
+	// Store branch output
+	ctx.SetVariable("branch", map[string]interface{}{
+		"output":  execResult.Output,
+		"case":    conditionStr,
+		"success": execResult.Success,
+	})
+
+	// If it was a step, add to step results
 	if stepEntity, ok := caseEntity.Entity.(*ast.StepEntity); ok {
-		stepResult, err := r.executeStep(ctx, stepEntity, resolver, 1, 1)
-		result.StepResults[stepEntity.Name()] = stepResult
-		if err != nil {
-			return err
+		result.StepResults[stepEntity.Name()] = &StepResult{
+			Name:     stepEntity.Name(),
+			Success:  execResult.Success,
+			Output:   execResult.Output,
+			Duration: execResult.Duration,
 		}
-		// Store branch output
-		ctx.SetVariable("branch", map[string]interface{}{
-			"output": stepResult.Output,
-			"case":   conditionStr,
-		})
 	}
 
 	return nil
@@ -414,14 +440,21 @@ func (r *Runtime) executeLoopBlock(ctx *ExecutionContext, loop ast.LoopValue, re
 	for i := 0; i < maxIterations; i++ {
 		ctx.SetVariable("iteration", i+1)
 
-		// Execute loop body steps
-		for j, nestedEntity := range loop.Body {
+		// Execute loop body entities
+		for _, nestedEntity := range loop.Body {
+			execResult, err := r.Execute(ctx.Context, nestedEntity.Entity)
+			if err != nil {
+				return fmt.Errorf("loop iteration %d, entity %q failed: %w", i+1, nestedEntity.Entity.Name(), err)
+			}
+
+			// If it was a step, add to step results with iteration suffix
 			if stepEntity, ok := nestedEntity.Entity.(*ast.StepEntity); ok {
 				stepName := fmt.Sprintf("%s_iter%d", stepEntity.Name(), i+1)
-				stepResult, err := r.executeStep(ctx, stepEntity, resolver, j+1, len(loop.Body))
-				result.StepResults[stepName] = stepResult
-				if err != nil {
-					return fmt.Errorf("loop iteration %d, step %q failed: %w", i+1, stepEntity.Name(), err)
+				result.StepResults[stepName] = &StepResult{
+					Name:     stepName,
+					Success:  execResult.Success,
+					Output:   execResult.Output,
+					Duration: execResult.Duration,
 				}
 			}
 		}

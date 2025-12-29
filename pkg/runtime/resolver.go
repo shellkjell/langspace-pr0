@@ -423,7 +423,117 @@ func (r *Resolver) resolveMethodCall(mc ast.MethodCallValue) (interface{}, error
 		if val, exists := objMap[mc.Method]; exists {
 			return val, nil
 		}
-		return nil, fmt.Errorf("property %q not found on object", mc.Method)
+	}
+
+	// Handle string methods
+	if s, ok := obj.(string); ok {
+		switch mc.Method {
+		case "upper":
+			return strings.ToUpper(s), nil
+		case "lower":
+			return strings.ToLower(s), nil
+		case "trim":
+			return strings.TrimSpace(s), nil
+		case "split":
+			sep := " "
+			if len(args) > 0 {
+				sep = toString(args[0])
+			}
+			return strings.Split(s, sep), nil
+		case "contains":
+			if len(args) > 0 {
+				return strings.Contains(s, toString(args[0])), nil
+			}
+			return false, nil
+		case "replace":
+			if len(args) >= 2 {
+				return strings.ReplaceAll(s, toString(args[0]), toString(args[1])), nil
+			}
+			return s, nil
+		case "starts_with":
+			if len(args) > 0 {
+				return strings.HasPrefix(s, toString(args[0])), nil
+			}
+			return false, nil
+		case "ends_with":
+			if len(args) > 0 {
+				return strings.HasSuffix(s, toString(args[0])), nil
+			}
+			return false, nil
+		case "len":
+			return float64(len(s)), nil
+		}
+	}
+
+	// Handle array methods
+	if arr, ok := obj.([]interface{}); ok {
+		switch mc.Method {
+		case "join":
+			sep := ","
+			if len(args) > 0 {
+				sep = toString(args[0])
+			}
+			strParts := make([]string, len(arr))
+			for i, v := range arr {
+				strParts[i] = toString(v)
+			}
+			return strings.Join(strParts, sep), nil
+		case "len":
+			return float64(len(arr)), nil
+		case "at":
+			if len(args) > 0 {
+				if idx, ok := toInt(args[0]); ok {
+					if idx >= 0 && idx < len(arr) {
+						return arr[idx], nil
+					}
+				}
+			}
+			return nil, nil
+		case "first":
+			if len(arr) > 0 {
+				return arr[0], nil
+			}
+			return nil, nil
+		case "last":
+			if len(arr) > 0 {
+				return arr[len(arr)-1], nil
+			}
+			return nil, nil
+		case "contains":
+			if len(args) > 0 {
+				target := args[0]
+				for _, v := range arr {
+					if v == target {
+						return true, nil
+					}
+				}
+			}
+			return false, nil
+		}
+	}
+
+	// Handle object methods
+	if objMap, ok := obj.(map[string]interface{}); ok {
+		switch mc.Method {
+		case "keys":
+			keys := make([]interface{}, 0, len(objMap))
+			for k := range objMap {
+				keys = append(keys, k)
+			}
+			return keys, nil
+		case "values":
+			values := make([]interface{}, 0, len(objMap))
+			for _, v := range objMap {
+				values = append(values, v)
+			}
+			return values, nil
+		case "has":
+			if len(args) > 0 {
+				_, exists := objMap[toString(args[0])]
+				return exists, nil
+			}
+			return false, nil
+		}
 	}
 
 	// Handle special method calls
@@ -440,6 +550,14 @@ func (r *Resolver) resolveMethodCall(mc ast.MethodCallValue) (interface{}, error
 	}
 
 	return nil, fmt.Errorf("unknown method call: %s.%s", objStr, mc.Method)
+}
+
+// toInt converts a value to int if possible.
+func toInt(v interface{}) (int, bool) {
+	if f, ok := toFloat(v); ok {
+		return int(f), true
+	}
+	return 0, false
 }
 
 // resolveFunctionCall resolves a function call.
@@ -576,6 +694,27 @@ func (r *Resolver) resolveComparison(cmp ast.ComparisonValue) (interface{}, erro
 		return nil, err
 	}
 
+	// Try numeric comparison first
+	if leftNum, ok := toFloat(left); ok {
+		if rightNum, ok := toFloat(right); ok {
+			switch cmp.Operator {
+			case "==":
+				return leftNum == rightNum, nil
+			case "!=":
+				return leftNum != rightNum, nil
+			case "<":
+				return leftNum < rightNum, nil
+			case ">":
+				return leftNum > rightNum, nil
+			case "<=":
+				return leftNum <= rightNum, nil
+			case ">=":
+				return leftNum >= rightNum, nil
+			}
+		}
+	}
+
+	// Fall back to string comparison
 	leftStr := toString(left)
 	rightStr := toString(right)
 
@@ -595,6 +734,24 @@ func (r *Resolver) resolveComparison(cmp ast.ComparisonValue) (interface{}, erro
 	default:
 		return nil, fmt.Errorf("unknown comparison operator: %s", cmp.Operator)
 	}
+}
+
+// toFloat converts a value to float64 if possible.
+func toFloat(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case string:
+		var f float64
+		if _, err := fmt.Sscanf(val, "%f", &f); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
 }
 
 // getNestedValue retrieves a nested value from a complex object.
