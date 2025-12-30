@@ -28,6 +28,7 @@ func (e ParseError) Error() string {
 // ParseResult contains the result of parsing, including any recovered errors
 type ParseResult struct {
 	Entities []ast.Entity // Successfully parsed entities
+	Imports  []ast.Import // Discovered import directives
 	Errors   []ParseError // Errors encountered during parsing
 }
 
@@ -128,6 +129,7 @@ func (p *Parser) expect(t tokenizer.TokenType) (tokenizer.Token, *ParseError) {
 func (p *Parser) ParseWithRecovery() ParseResult {
 	result := ParseResult{
 		Entities: make([]ast.Entity, 0),
+		Imports:  make([]ast.Import, 0),
 		Errors:   make([]ParseError, 0),
 	}
 
@@ -150,7 +152,7 @@ func (p *Parser) ParseWithRecovery() ParseResult {
 
 	p.pos = 0
 	for p.pos < len(p.tokens) {
-		entity, err := p.parseTopLevel()
+		entity, imp, err := p.parseTopLevel()
 		if err != nil {
 			result.Errors = append(result.Errors, *err)
 			p.skipToRecoveryPoint()
@@ -158,6 +160,9 @@ func (p *Parser) ParseWithRecovery() ParseResult {
 		}
 		if entity != nil {
 			result.Entities = append(result.Entities, entity)
+		}
+		if imp != nil {
+			result.Imports = append(result.Imports, *imp)
 		}
 	}
 
@@ -177,15 +182,29 @@ func (p *Parser) skipToRecoveryPoint() {
 	}
 }
 
-// parseTopLevel parses a top-level declaration
-func (p *Parser) parseTopLevel() (ast.Entity, *ParseError) {
+// parseTopLevel parses a top-level declaration (entity or import)
+func (p *Parser) parseTopLevel() (ast.Entity, *ast.Import, *ParseError) {
 	tok := p.current()
 	if tok.Type != tokenizer.TokenTypeIdentifier {
-		return nil, &ParseError{
+		return nil, nil, &ParseError{
 			Line:    tok.Line,
 			Column:  tok.Column,
-			Message: fmt.Sprintf("expected entity type, got %s", tok.Type),
+			Message: fmt.Sprintf("expected identifier at top level, got %s", tok.Type),
 		}
+	}
+
+	// Check if this is an import
+	if tok.Value == "import" {
+		p.advance()
+		pathTok, err := p.expect(tokenizer.TokenTypeString)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &ast.Import{
+			Path:   pathTok.Value,
+			Line:   tok.Line,
+			Column: tok.Column,
+		}, nil
 	}
 
 	entityType := tok.Value
@@ -196,7 +215,8 @@ func (p *Parser) parseTopLevel() (ast.Entity, *ParseError) {
 
 	// Config doesn't have a name
 	if entityType == "config" {
-		return p.parseBlockEntity(entityType, "", tok.Line, tok.Column)
+		entity, err := p.parseBlockEntity(entityType, "", tok.Line, tok.Column)
+		return entity, nil, err
 	}
 
 	// Expect a name (string or identifier)
@@ -205,10 +225,8 @@ func (p *Parser) parseTopLevel() (ast.Entity, *ParseError) {
 		name = nameTok.Value
 		p.advance()
 	} else if nameTok.Type == tokenizer.TokenTypeIdentifier {
-		name = nameTok.Value
-		p.advance()
 	} else {
-		return nil, &ParseError{
+		return nil, nil, &ParseError{
 			Line:    nameTok.Line,
 			Column:  nameTok.Column,
 			Message: "expected entity name",
@@ -218,11 +236,13 @@ func (p *Parser) parseTopLevel() (ast.Entity, *ParseError) {
 	// Check for block syntax vs legacy
 	nextTok := p.current()
 	if nextTok.Type == tokenizer.TokenTypeLeftBrace {
-		return p.parseBlockEntity(entityType, name, tok.Line, tok.Column)
+		entity, err := p.parseBlockEntity(entityType, name, tok.Line, tok.Column)
+		return entity, nil, err
 	}
 
 	// Legacy single-line syntax
-	return p.parseLegacyEntity(entityType, name, tok.Line, tok.Column)
+	entity, err := p.parseLegacyEntity(entityType, name, tok.Line, tok.Column)
+	return entity, nil, err
 }
 
 // parseBlockEntity parses an entity with block syntax: entity "name" { ... }
@@ -1318,11 +1338,11 @@ func (p *Parser) parseLegacyEntity(entityType, name string, line, col int) (ast.
 	return entity, nil
 }
 
-// Parse processes the input text and returns a slice of parsed entities.
-func (p *Parser) Parse() ([]ast.Entity, error) {
+// Parse processes the input text and returns parsed entities and imports.
+func (p *Parser) Parse() ([]ast.Entity, []ast.Import, error) {
 	result := p.ParseWithRecovery()
 	if result.HasErrors() {
-		return nil, result.Errors[0]
+		return nil, nil, result.Errors[0]
 	}
-	return result.Entities, nil
+	return result.Entities, result.Imports, nil
 }

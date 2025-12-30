@@ -546,12 +546,14 @@ pipeline "debate" {
 
 ### Phase 3: Integration - In Progress
 - [x] MCP client integration
-- [ ] Compilation to Python/LangGraph
+- [x] Compilation to Python/LangGraph
+- [x] Modular Import mechanism and recursive loader
 - [ ] Compilation to TypeScript
-- [x] CLI tool (`langspace run`, `langspace serve`, `langspace parse`, `langspace validate`)
+- [x] CLI tool (`langspace run`, `langspace serve`, `langspace parse`, `langspace validate`, `langspace lsp`)
 
 ### Phase 4: Advanced
 - [x] Trigger system and event handling
+- [x] Intelligent IDE support (Go to Definition)
 - [ ] Checkpointing and resumption
 - [ ] Multi-model routing
 - [ ] Plugin system for custom tools

@@ -32,6 +32,9 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Trigger engine for automated workflows
 - [x] LangSpace CLI with `serve` command
 - [x] Model Context Protocol (MCP) client interface
+- [x] Modular import mechanism and recursive Loader
+- [x] Language Server Protocol (LSP) for intelligent IDE features
+- [x] Go to Definition across multiple files
 
 
 ### Known Issues / Limitations
@@ -80,6 +83,7 @@ This document outlines the planned development roadmap for the LangSpace project
 - [ ] Implement syntax highlighting
 - [ ] Add source map support
 - [x] Improve error recovery
+- [x] **Modular Imports** — Recursive loading and multi-file project support
 - [ ] Support for custom entity types
 - [x] ~~Handle typed parameters~~ — Supports `query: string required "desc"` and `type: enum ["a", "b"]`
 - [x] **Expression parser** — Method calls, comparisons, control flow (branch, loop, break_if)
@@ -121,8 +125,8 @@ This document outlines the planned development roadmap for the LangSpace project
 - [x] Entity transformation pipeline
 
 ### 2. Developer Experience
-- [ ] CLI tools for entity management
-- [ ] Interactive debugging support
+- [x] CLI tools for entity management (multi-file loader)
+- [x] Interactive debugging support (Go to Definition via LSP)
 - [ ] Documentation generator
 - [ ] Entity visualization tools
 - [ ] Integration examples

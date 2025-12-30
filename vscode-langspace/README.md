@@ -5,6 +5,7 @@ Syntax highlighting and language support for [LangSpace](https://github.com/shel
 ## Features
 
 - Syntax highlighting for `.ls` files
+- **Intelligent IDE support**: "Go to Definition" across imported files
 - Bracket matching and auto-closing
 - Comment toggling (`Cmd+/` or `Ctrl+/`)
 - Code folding
@@ -22,10 +23,15 @@ Syntax highlighting and language support for [LangSpace](https://github.com/shel
 
 ```bash
 cd vscode-langspace
+# Requires Node.js and npm
+npm install
+npm run compile
 npm install -g @vscode/vsce
 vsce package
 code --install-extension langspace-0.1.0.vsix
 ```
+
+> **Note**: For "Go to Definition" support, make sure the `langspace` CLI is installed and available in your PATH.
 
 ## Supported Syntax
 

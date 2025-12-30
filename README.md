@@ -38,7 +38,16 @@ go get github.com/shellkjell/langspace
 
 ## Language Syntax
 
-LangSpace uses block-based declarations with key-value properties.
+LangSpace uses block-based declarations with key-value properties and supports modular imports for large projects.
+
+### Imports
+
+Import other LangSpace files to share definitions.
+
+```langspace
+import "common/agents.ls"
+import "prompts/reviewer.md"
+```
 
 ### Files
 
@@ -270,12 +279,16 @@ langspace compile --target python -file workflow.ls -output ./out
 
 # Validate syntax and rules
 langspace validate -file workflow.ls
+
+# Start Language Server (LSP) for IDE support
+langspace lsp
 ```
 
 ## VS Code Extension
 
 A VS Code extension for LangSpace is available in the `vscode-langspace/` directory. It provides:
 - Syntax highlighting for `.ls` files
+- Intelligent IDE support (Go to Definition) via LSP
 - Language configuration and snippets
 
 To install manually:
@@ -297,8 +310,9 @@ code --install-extension vscode-langspace/langspace-0.1.0.vsix
 - **Automation**: Trigger engine for scheduled and event-driven workflows
 - **Workspace**: Full persistence, snapshoting, and versioning system
 - **CLI**: Comprehensive toolset (`parse`, `run`, `validate`, `serve`, `compile`)
-- **VS Code Support**: Syntax highlighting via bundled extension
-- **Test Coverage**: 150+ tests covering core logic and edge cases
+- **Modular Imports**: Multi-file support with `import` statements and recursive loading
+- **Intelligent IDE Support**: Full "Go to Definition" support across files via LSP server
+- **Test Coverage**: 160+ tests covering core logic, imports, and LSP features
 
 ### - In Progress / Planned
 - **TypeScript Compilation**: Target generation for Node.js/Deno
