@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean coverage benchmark docs
+.PHONY: all build test lint clean coverage benchmark docs local-ci setup-local-ci
 
 # Go parameters
 GOCMD=go
@@ -70,3 +70,12 @@ run:
 
 watch:
 	reflex -r '\.go$$' -s -- sh -c '$(GOTEST) ./...'
+
+# Local CI support
+local-ci:
+	act -j test -j build
+
+setup-local-ci:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-push
+	@echo "Local CI setup complete. Git hooks configured to use .githooks directory."

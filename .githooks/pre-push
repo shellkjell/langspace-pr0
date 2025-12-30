@@ -1,0 +1,17 @@
+#!/bin/bash
+
+echo "Running local CI before pushing..."
+
+# Run act to simulate GitHub Actions locally
+# We only run the 'test' and 'build' jobs
+make local-ci
+
+RESULT=$?
+
+if [ $RESULT -ne 0 ]; then
+    echo "Local CI failed! Push aborted."
+    exit 1
+fi
+
+echo "Local CI passed. Proceeding with push."
+exit 0

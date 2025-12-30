@@ -324,20 +324,41 @@ See [ROADMAP.md](ROADMAP.md) for the full development plan and [PRD.md](PRD.md) 
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Development
 
-### Requirements
+### Prerequisites
 
 - Go 1.23+
-- Make (optional, for build automation)
+- Docker Desktop (for local CI)
+- [act](https://github.com/nektos/act) (for local CI)
+
+### Setup Local CI
+
+To run GitHub Actions locally and ensure quality before pushing, run:
+
+```bash
+make setup-local-ci
+```
+
+This will configure a git pre-push hook that runs the CI suite (`test` and `build` jobs) locally using `act`.
 
 ### Running Tests
 
 ```bash
-go test ./...
-go test -bench=. -benchmem ./...
-go test -race ./...
+make test
 ```
+
+### Local CI Manual Run
+
+You can also run the local CI manually:
+
+```bash
+make local-ci
+```
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
