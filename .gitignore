@@ -79,3 +79,5 @@ Icon
 *_string.go
 mock_*.go
 /out/
+vscode-langspace/node_modules
+vscode-langspace/out

@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,13 +16,14 @@ import (
 	_ "github.com/shellkjell/langspace/pkg/compile/python"     // Register Python compiler
 	_ "github.com/shellkjell/langspace/pkg/compile/typescript" // Register TypeScript compiler
 	"github.com/shellkjell/langspace/pkg/lsp"
+	"github.com/shellkjell/langspace/pkg/parser"
 	"github.com/shellkjell/langspace/pkg/runtime"
 	"github.com/shellkjell/langspace/pkg/workspace"
 )
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
-		log.Fatalf("Error: %v", err)
+		os.Exit(1)
 	}
 }
 
@@ -61,7 +61,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	if err != nil {
 		fmt.Fprintf(stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 	return nil
 }
@@ -110,17 +110,48 @@ func runParse(args []string, stdin io.Reader, stdout io.Writer) error {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
-	if *inputFile == "" {
-		return fmt.Errorf("required flag -file not provided")
-	}
-
 	// Create a new workspace
 	ws := workspace.New()
+
+	if *inputFile == "" {
+		// Read from stdin
+		content, err := io.ReadAll(stdin)
+		if err != nil {
+			return fmt.Errorf("reading stdin: %w", err)
+		}
+
+		if len(content) == 0 {
+			// Handle empty input gracefully
+			if *showJSON {
+				return outputJSON(stdout, ws)
+			}
+			printStats(stdout, ws.Stat(), 0)
+			return nil
+		}
+
+		p := parser.New(string(content))
+		entities, _, err := p.Parse()
+		if err != nil {
+			return fmt.Errorf("parse error: %w", err)
+		}
+
+		for _, entity := range entities {
+			if err := ws.AddEntity(entity); err != nil {
+				return fmt.Errorf("failed to add entity %q: %w", entity.Name(), err)
+			}
+		}
+
+		if *showJSON {
+			return outputJSON(stdout, ws)
+		}
+		printStats(stdout, ws.Stat(), len(ws.GetEntities()))
+		return nil
+	}
 
 	// Load file and its imports
 	l := workspace.NewLoader(ws)
 	if err := l.Load(*inputFile); err != nil {
-		return err
+		return fmt.Errorf("reading input: %w", err)
 	}
 
 	if *showJSON {
