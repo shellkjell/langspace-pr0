@@ -1,0 +1,27 @@
+name: 'Setup Environment'
+description: 'Sets up Go, Node.js and installs tools with caching'
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+        cache: true
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: vscode-langspace/package-lock.json
+
+    - name: Install Linting Tools
+      shell: bash
+      run: |
+        if ! command -v golangci-lint &> /dev/null; then
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        fi
+        if ! command -v vsce &> /dev/null; then
+          npm install -g @vscode/vsce
+        fi

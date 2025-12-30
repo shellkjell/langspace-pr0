@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -202,7 +203,7 @@ type mockValidator struct {
 
 func (m *mockValidator) ValidateEntity(entity ast.Entity) error {
 	if m.shouldError {
-		return fmt.Errorf(m.errorMsg)
+		return errors.New(m.errorMsg)
 	}
 	return nil
 }
