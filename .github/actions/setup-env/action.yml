@@ -4,7 +4,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v5
       with:
         go-version: '1.25'
         cache: true
@@ -21,7 +21,4 @@ runs:
       run: |
         if ! command -v golangci-lint &> /dev/null; then
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-        fi
-        if ! command -v vsce &> /dev/null; then
-          npm install -g @vscode/vsce
         fi
