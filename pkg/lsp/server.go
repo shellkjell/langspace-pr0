@@ -144,7 +144,9 @@ func (s *Server) reindex() error {
 		for _, e := range entities {
 			// Note: We need to store URI in metadata to allow "Go to Definition" to return correct file
 			e.SetMetadata("uri", uri)
-			newWS.AddEntity(e)
+			if err := newWS.AddEntity(e); err != nil {
+				log.Printf("failed to add entity %s: %v", e.Name(), err)
+			}
 		}
 	}
 	s.workspace = newWS

@@ -1369,8 +1369,8 @@ func TestWorkspace_Persistence(t *testing.T) {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
 		tmpPath := tmpFile.Name()
-		tmpFile.Close()
-		defer os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		defer func() { _ = os.Remove(tmpPath) }()
 
 		// Save to file
 		err = w.SaveToFile(tmpPath)

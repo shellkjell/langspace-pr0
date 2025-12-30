@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean coverage benchmark docs local-ci setup-local-ci
+.PHONY: all build test lint clean coverage benchmark docs local-ci setup-local-ci verify
 
 # Go parameters
 GOCMD=go
@@ -72,6 +72,8 @@ watch:
 	reflex -r '\.go$$' -s -- sh -c '$(GOTEST) ./...'
 
 # Local CI support
+verify: lint test
+
 local-ci:
 	act -j test -j build
 

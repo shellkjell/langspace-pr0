@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 )
@@ -150,6 +151,8 @@ func (c *StdioMCPClient) ListTools(ctx context.Context) ([]ToolDefinition, error
 }
 
 func (c *StdioMCPClient) Close() error {
-	c.stdin.Close()
-	return c.cmd.Wait()
+	if err := c.stdin.Close(); err != nil {
+		log.Printf("failed to close MCP stdin: %v", err)
+	}
+	return c.cmd.Process.Kill()
 }

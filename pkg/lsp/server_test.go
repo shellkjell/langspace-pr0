@@ -15,7 +15,7 @@ pipeline "main" {
 	s.files[uri] = content
 
 	// Index
-	s.reindex()
+	_ = s.reindex()
 
 	// Test Go to Definition for "researcher" at line 3, col 25
 	params := map[string]interface{}{

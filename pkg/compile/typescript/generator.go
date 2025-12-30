@@ -94,7 +94,7 @@ func (g *Generator) generateMain(agents, pipelines, intents, configs []ast.Entit
 
 func (g *Generator) writeConfig(buf *bytes.Buffer, config ast.Entity) {
 	model := getStringProp(config, "default_model", "claude-3-5-sonnet-20240620")
-	buf.WriteString(fmt.Sprintf("\nconst DEFAULT_MODEL = '%s';\n", model))
+	fmt.Fprintf(buf, "\nconst DEFAULT_MODEL = '%s';\n", model)
 }
 
 func (g *Generator) writeAgent(buf *bytes.Buffer, agent ast.Entity) error {
@@ -203,7 +203,14 @@ OPENAI_API_KEY=your_key_here
 }
 
 var funcMap = template.FuncMap{
-	"title": strings.Title,
+	"title": toTitle,
+}
+
+func toTitle(s string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // Helpers
@@ -217,7 +224,7 @@ func toCamelCase(s string) string {
 	}
 	res := strings.ToLower(words[0])
 	for i := 1; i < len(words); i++ {
-		res += strings.Title(words[i])
+		res += toTitle(words[i])
 	}
 	return res
 }

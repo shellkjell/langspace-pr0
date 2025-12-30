@@ -92,10 +92,7 @@ func (g *Generator) generateMain(agents, pipelines, intents, configs []ast.Entit
 
 func (g *Generator) writeConfig(buf *bytes.Buffer, config ast.Entity) error {
 	model := getStringProp(config, "default_model", "claude-sonnet-4-20250514")
-	buf.WriteString(fmt.Sprintf(`
-# Configuration
-DEFAULT_MODEL = %q
-`, model))
+	fmt.Fprintf(buf, "\n# Configuration\nDEFAULT_MODEL = %q\n", model)
 	return nil
 }
 
@@ -196,8 +193,15 @@ func toSnakeCase(s string) string {
 	return strings.ToLower(s)
 }
 
+func toTitle(s string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 var funcMap = template.FuncMap{
-	"title":     strings.Title,
+	"title":     toTitle,
 	"snakecase": toSnakeCase,
 	"add": func(a, b int) int {
 		return a + b

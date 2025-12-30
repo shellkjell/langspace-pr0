@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,15 +88,19 @@ func (r *Runtime) executePythonScript(ctx *ExecutionContext, code string, params
 	// Create temporary file
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("ls_script_%d.py", timeNow().UnixNano()))
-	
+
 	if err := os.WriteFile(tmpFile, []byte(code), 0644); err != nil {
 		return "", fmt.Errorf("failed to create temporary script file: %w", err)
 	}
-	defer os.Remove(tmpFile)
+	defer func() {
+		if err := os.Remove(tmpFile); err != nil {
+			log.Printf("failed to remove temporary script file %s: %v", tmpFile, err)
+		}
+	}()
 
 	// Execute python
 	cmd := exec.CommandContext(ctx.Context, "python3", tmpFile)
-	
+
 	// Pass parameters as environment variables
 	cmd.Env = os.Environ()
 	for k, v := range params {
@@ -124,7 +129,7 @@ func (r *Runtime) executePythonScript(ctx *ExecutionContext, code string, params
 // executeShellScript executes shell code.
 func (r *Runtime) executeShellScript(ctx *ExecutionContext, code string, params map[string]interface{}, resolver *Resolver) (string, error) {
 	cmd := exec.CommandContext(ctx.Context, "sh", "-c", code)
-	
+
 	// Pass parameters as environment variables
 	cmd.Env = os.Environ()
 	for k, v := range params {

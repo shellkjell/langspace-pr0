@@ -74,6 +74,8 @@ jobs:
         mv langspace langspace-linux-amd64
         GOOS=darwin GOARCH=amd64 make build
         mv langspace langspace-darwin-amd64
+        GOOS=darwin GOARCH=arm64 make build
+        mv langspace langspace-darwin-arm64
         GOOS=windows GOARCH=amd64 make build
         mv langspace langspace-windows-amd64.exe
 
@@ -83,6 +85,7 @@ jobs:
         files: |
           langspace-linux-amd64
           langspace-darwin-amd64
+          langspace-darwin-arm64
           langspace-windows-amd64.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

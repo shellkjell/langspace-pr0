@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -21,7 +22,7 @@ func (r *Runtime) executeShellCommand(ctx *ExecutionContext, command string, arg
 
 	// Execute the command
 	cmd := exec.CommandContext(ctx.Context, "sh", "-c", command)
-	
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -104,7 +105,11 @@ func (r *Runtime) executeHTTPTool(ctx *ExecutionContext, args map[string]interfa
 	if err != nil {
 		return nil, fmt.Errorf("http request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

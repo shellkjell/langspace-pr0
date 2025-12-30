@@ -3,11 +3,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -60,7 +60,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	if err != nil {
-		fmt.Fprintf(stderr, "Error: %v\n", err)
+		checkPrint(fmt.Fprintf(stderr, "Error: %v\n", err))
 		return err
 	}
 	return nil
@@ -91,12 +91,12 @@ Examples:
 
 For more information, visit: https://github.com/shellkjell/langspace
 `
-	fmt.Fprint(w, help)
+	checkPrint(fmt.Fprint(w, help))
 	return nil
 }
 
 func showVersion(w io.Writer) error {
-	fmt.Fprintln(w, "langspace version 0.1.0")
+	checkPrint(fmt.Fprintln(w, "langspace version 0.1.0"))
 	return nil
 }
 
@@ -255,15 +255,15 @@ func runExecute(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 
 	// Print result
 	if !*noStream {
-		fmt.Fprintln(stdout) // Newline after streaming
+		checkPrint(fmt.Fprintln(stdout)) // Newline after streaming
 	}
 
-	if *verbose {
+	if *verbose || !result.Success {
 		printExecutionResult(stdout, result)
 	} else if result.Output != nil && !*noStream {
 		// If not streaming, print the output now
 	} else if result.Output != nil {
-		fmt.Fprintf(stdout, "%v\n", result.Output)
+		checkPrint(fmt.Fprintf(stdout, "%v\n", result.Output))
 	}
 
 	if !result.Success {
@@ -317,10 +317,10 @@ func runCompile(args []string, stdout io.Writer) error {
 		if err := os.WriteFile(outPath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", filename, err)
 		}
-		fmt.Fprintf(stdout, "Generated: %s\n", outPath)
+		checkPrint(fmt.Fprintf(stdout, "Generated: %s\n", outPath))
 	}
 
-	fmt.Fprintf(stdout, "\nCompilation complete. %d files generated.\n", len(output.Files))
+	checkPrint(fmt.Fprintf(stdout, "\nCompilation complete. %d files generated.\n", len(output.Files)))
 	return nil
 }
 
@@ -345,7 +345,7 @@ func runValidate(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	// For validation, we might want to still show ParseWithRecovery errors from the main file,
 	// but Loader already parsed it. Let's just output success for now if Loader succeeds.
-	fmt.Fprintf(stdout, "Validation successful: %d entities loaded (including imports)\n", len(ws.GetEntities()))
+	checkPrint(fmt.Fprintf(stdout, "Validation successful: %d entities loaded (including imports)\n", len(ws.GetEntities())))
 	return nil
 }
 
@@ -381,8 +381,8 @@ func runServe(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to start trigger engine: %w", err)
 	}
 
-	fmt.Fprintf(stdout, "LangSpace server listening on port %d...\n", *port)
-	fmt.Fprintf(stdout, "Trigger engine active with %d triggers\n", len(ws.GetEntitiesByType("trigger")))
+	checkPrint(fmt.Fprintf(stdout, "LangSpace server listening on port %d...\n", *port))
+	checkPrint(fmt.Fprintf(stdout, "Trigger engine active with %d triggers\n", len(ws.GetEntitiesByType("trigger"))))
 
 	// Keep running until interrupted
 	select {}
@@ -410,37 +410,19 @@ func detectEntityType(ws *workspace.Workspace, name string) string {
 	return ""
 }
 
-// readInput reads input from a file or stdin
-func readInput(filePath string, stdin io.Reader) (string, error) {
-	if filePath != "" {
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			return "", fmt.Errorf("reading file %s: %w", filePath, err)
-		}
-		return string(data), nil
-	}
-
-	reader := bufio.NewReader(stdin)
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return "", fmt.Errorf("reading stdin: %w", err)
-	}
-	return string(data), nil
-}
-
 // printStats outputs workspace statistics
 func printStats(w io.Writer, stats workspace.WorkspaceStats, entityCount int) {
-	fmt.Fprintln(w, "Workspace statistics:")
-	fmt.Fprintf(w, "  Number of entities: %d\n", stats.TotalEntities)
-	fmt.Fprintf(w, "  Number of file entities: %d\n", stats.FileEntities)
-	fmt.Fprintf(w, "  Number of agent entities: %d\n", stats.AgentEntities)
-	fmt.Fprintf(w, "  Number of tool entities: %d\n", stats.ToolEntities)
-	fmt.Fprintf(w, "  Number of intent entities: %d\n", stats.IntentEntities)
-	fmt.Fprintf(w, "  Number of pipeline entities: %d\n", stats.PipelineEntities)
-	fmt.Fprintf(w, "  Number of script entities: %d\n", stats.ScriptEntities)
-	fmt.Fprintf(w, "  Number of relationships: %d\n", stats.TotalRelationships)
-	fmt.Fprintf(w, "  Number of hooks: %d\n", stats.TotalHooks)
-	fmt.Fprintf(w, "Successfully processed entities: %d\n", entityCount)
+	checkPrint(fmt.Fprintln(w, "Workspace statistics:"))
+	checkPrint(fmt.Fprintf(w, "  Number of entities: %d\n", stats.TotalEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of file entities: %d\n", stats.FileEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of agent entities: %d\n", stats.AgentEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of tool entities: %d\n", stats.ToolEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of intent entities: %d\n", stats.IntentEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of pipeline entities: %d\n", stats.PipelineEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of script entities: %d\n", stats.ScriptEntities))
+	checkPrint(fmt.Fprintf(w, "  Number of relationships: %d\n", stats.TotalRelationships))
+	checkPrint(fmt.Fprintf(w, "  Number of hooks: %d\n", stats.TotalHooks))
+	checkPrint(fmt.Fprintf(w, "Successfully processed entities: %d\n", entityCount))
 }
 
 // outputJSON outputs the workspace as JSON
@@ -450,28 +432,28 @@ func outputJSON(w io.Writer, ws *workspace.Workspace) error {
 
 // printExecutionResult prints detailed execution result
 func printExecutionResult(w io.Writer, result *runtime.ExecutionResult) {
-	fmt.Fprintln(w, "\n--- Execution Result ---")
-	fmt.Fprintf(w, "Success: %v\n", result.Success)
-	fmt.Fprintf(w, "Duration: %s\n", result.Duration)
-	fmt.Fprintf(w, "Tokens Used: %d (input: %d, output: %d)\n",
+	checkPrint(fmt.Fprintln(w, "\n--- Execution Result ---"))
+	checkPrint(fmt.Fprintf(w, "Success: %v\n", result.Success))
+	checkPrint(fmt.Fprintf(w, "Duration: %s\n", result.Duration))
+	checkPrint(fmt.Fprintf(w, "Tokens Used: %d (input: %d, output: %d)\n",
 		result.TokensUsed.TotalTokens,
 		result.TokensUsed.InputTokens,
-		result.TokensUsed.OutputTokens)
+		result.TokensUsed.OutputTokens))
 
 	if len(result.StepResults) > 0 {
-		fmt.Fprintln(w, "\nStep Results:")
+		checkPrint(fmt.Fprintln(w, "\nStep Results:"))
 		for name, step := range result.StepResults {
-			fmt.Fprintf(w, "  %s: success=%v, duration=%s\n", name, step.Success, step.Duration)
+			checkPrint(fmt.Fprintf(w, "  %s: success=%v, duration=%s\n", name, step.Success, step.Duration))
 		}
 	}
 
 	if result.Error != nil {
-		fmt.Fprintf(w, "\nError: %v\n", result.Error)
+		checkPrint(fmt.Fprintf(w, "\nError: %v\n", result.Error))
 	}
 
 	if result.Output != nil {
-		fmt.Fprintln(w, "\n--- Output ---")
-		fmt.Fprintf(w, "%v\n", result.Output)
+		checkPrint(fmt.Fprintln(w, "\n--- Output ---"))
+		checkPrint(fmt.Fprintf(w, "%v\n", result.Output))
 	}
 }
 
@@ -484,7 +466,7 @@ type CLIStreamHandler struct {
 
 func (h *CLIStreamHandler) OnChunk(chunk runtime.StreamChunk) {
 	if chunk.Type == runtime.ChunkTypeContent {
-		fmt.Fprint(h.stdout, chunk.Content)
+		checkPrint(fmt.Fprint(h.stdout, chunk.Content))
 	}
 }
 
@@ -492,21 +474,27 @@ func (h *CLIStreamHandler) OnProgress(event runtime.ProgressEvent) {
 	if h.verbose {
 		switch event.Type {
 		case runtime.ProgressTypeStart:
-			fmt.Fprintf(h.stderr, "🚀 %s\n", event.Message)
+			checkPrint(fmt.Fprintf(h.stderr, "🚀 %s\n", event.Message))
 		case runtime.ProgressTypeStep:
-			fmt.Fprintf(h.stderr, "📍 [%d%%] %s\n", event.Progress, event.Message)
+			checkPrint(fmt.Fprintf(h.stderr, "📍 [%d%%] %s\n", event.Progress, event.Message))
 		case runtime.ProgressTypeComplete:
-			fmt.Fprintf(h.stderr, "- %s\n", event.Message)
+			checkPrint(fmt.Fprintf(h.stderr, "- %s\n", event.Message))
 		case runtime.ProgressTypeError:
-			fmt.Fprintf(h.stderr, "❌ %s\n", event.Message)
+			checkPrint(fmt.Fprintf(h.stderr, "❌ %s\n", event.Message))
 		}
 	}
 }
 
-func (h *CLIStreamHandler) OnComplete(response *runtime.CompletionResponse) {
-	// Already handled by OnChunk
-}
+func (h *CLIStreamHandler) OnComplete(result *runtime.CompletionResponse) {}
 
 func (h *CLIStreamHandler) OnError(err error) {
-	fmt.Fprintf(h.stderr, "Error: %v\n", err)
+	checkPrint(fmt.Fprintf(h.stderr, "Error: %v\n", err))
+}
+
+// checkPrint is a helper that logs an error if a print operation fails.
+func checkPrint(_ int, err error) {
+	if err != nil {
+		// Log to standard logger as a fallback if terminal output fails
+		log.Printf("terminal output error: %v", err)
+	}
 }

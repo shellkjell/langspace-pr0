@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -1016,8 +1017,8 @@ func (w *Workspace) ForEachEntityOfType(entityType string, fn EntityProcessor, m
 // Must be called with lock held
 func (w *Workspace) removeRelationshipsForEntity(entityType, entityName string) {
 	w.relationships = slices.Filter(w.relationships, func(rel Relationship) bool {
-		return !((rel.SourceType == entityType && rel.SourceName == entityName) ||
-			(rel.TargetType == entityType && rel.TargetName == entityName))
+		return (rel.SourceType != entityType || rel.SourceName != entityName) &&
+			(rel.TargetType != entityType || rel.TargetName != entityName)
 	})
 }
 
@@ -1355,7 +1356,11 @@ func (w *Workspace) SaveToFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("failed to close file: %v", err)
+		}
+	}()
 
 	return w.SaveTo(file)
 }
@@ -1379,7 +1384,11 @@ func (w *Workspace) LoadFromFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("failed to close file: %v", err)
+		}
+	}()
 
 	return w.LoadFrom(file)
 }
