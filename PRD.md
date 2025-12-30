@@ -560,10 +560,9 @@ pipeline "debate" {
 
 ## Success Metrics
 
-1. **Adoption**: 1000+ GitHub stars within 6 months
-2. **Usability**: New users can create their first working agent in < 10 minutes
-3. **Expressiveness**: 90% of common AI workflows can be expressed in LangSpace
-4. **Performance**: Negligible overhead vs. direct API calls
+1. **Usability**: New users can create their first working agent in < 10 minutes
+2. **Expressiveness**: 90% of common AI workflows can be expressed in LangSpace
+3. **Performance**: Negligible overhead vs. direct API calls
 
 ## Non-Goals
 
