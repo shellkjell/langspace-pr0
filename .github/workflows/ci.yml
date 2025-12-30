@@ -12,7 +12,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup
         uses: ./.github/actions/setup-env
       - name: Run linter
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup
         uses: ./.github/actions/setup-env
       - name: Run tests
@@ -31,7 +31,7 @@ jobs:
       - name: Generate coverage
         run: make coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup
         uses: ./.github/actions/setup-env
       - name: Build
@@ -55,7 +55,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -81,8 +81,6 @@ jobs:
         run: |
           GOOS=linux GOARCH=amd64 make build
           mv langspace langspace-linux-amd64
-          GOOS=darwin GOARCH=amd64 make build
-          mv langspace langspace-darwin-amd64
           GOOS=darwin GOARCH=arm64 make build
           mv langspace langspace-darwin-arm64
           GOOS=windows GOARCH=amd64 make build
@@ -93,7 +91,6 @@ jobs:
         with:
           files: |
             langspace-linux-amd64
-            langspace-darwin-amd64
             langspace-darwin-arm64
             langspace-windows-amd64.exe
             langspace-${{ github.ref_name }}.vsix

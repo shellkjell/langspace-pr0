@@ -1,0 +1,33 @@
+name: Base Setup
+
+on:
+  workflow_call:
+    outputs:
+      go-version:
+        description: "The Go version used"
+        value: "1.25"
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: vscode-langspace/package-lock.json
+
+      - name: Install Linting Tools
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          npm install -g @vscode/vsce
